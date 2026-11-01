@@ -5,13 +5,10 @@ local me=P.LocalPlayer
 local on=false
 local target
 
-local Core=game:GetService("CoreGui")
-pcall(function() Core:FindFirstChild("AutoFarm"):Destroy() end)
-
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
 g.ResetOnSpawn=false
-g.Parent=Core
+g.Parent=game:GetService("CoreGui")
 
 local f=Instance.new("Frame",g)
 f.Size=UDim2.fromOffset(155,115)
@@ -19,6 +16,12 @@ f.Position=UDim2.new(.5,-77,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
 f.Draggable=true
+
+local status=Instance.new("TextLabel",f)
+status.Size=UDim2.new(1,0,0,25)
+status.Text="AUTO FARM OFF"
+status.TextColor3=Color3.new(1,1,1)
+status.BackgroundTransparency=1
 
 local function btn(txt,y,color)
  local b=Instance.new("TextButton",f)
@@ -29,12 +32,6 @@ local function btn(txt,y,color)
  b.BackgroundColor3=color
  return b
 end
-
-local status=Instance.new("TextLabel",f)
-status.Size=UDim2.new(1,0,0,25)
-status.Text="AUTO FARM OFF"
-status.TextColor3=Color3.new(1,1,1)
-status.BackgroundTransparency=1
 
 local start=btn("START",30,Color3.fromRGB(20,140,60))
 local stop=btn("STOP",72,Color3.fromRGB(160,40,40))
@@ -61,12 +58,26 @@ local function nearest(r)
  return best
 end
 
+local function attack()
+ press(Enum.KeyCode.Two)
+ task.wait(.25)
+
+ local c=me.Character
+ local tool=c and c:FindFirstChildOfClass("Tool")
+ if tool then
+  pcall(function() tool:Activate() end)
+ end
+
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
+end
+
 local follow
 start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
  status.Text="AUTO FARM ON"
- task.spawn(press,Enum.KeyCode.Two)
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -75,25 +86,23 @@ start.MouseButton1Click:Connect(function()
 
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
+
   if not h or not t or h.Health<=0 then
    target=nearest(r)
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
 
   if t then
-   r.CFrame=CFrame.lookAt(t.Position-Vector3.new(0,5,0),t.Position)
+   r.CFrame=CFrame.lookAt(
+    t.Position-Vector3.new(0,8,0),t.Position
+   )
    r.AssemblyLinearVelocity=Vector3.zero
   end
  end)
 
  task.spawn(function()
   while on do
-   local c=me.Character
-   local tool=c and c:FindFirstChildOfClass("Tool")
-   if tool then pcall(function() tool:Activate() end) end
-   press(Enum.KeyCode.F)
-   press(Enum.KeyCode.C)
-   press(Enum.KeyCode.V)
+   if target and target.Parent then attack() end
    task.wait(1)
   end
  end)
@@ -103,8 +112,13 @@ stop.MouseButton1Click:Connect(function()
  on=false
  target=nil
  status.Text="AUTO FARM OFF"
- if follow then follow:Disconnect() follow=nil end
+ if follow then
+  follow:Disconnect()
+  follow=nil
+ end
 end)
+
+
 
 
 
