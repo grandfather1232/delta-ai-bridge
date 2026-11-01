@@ -59,15 +59,11 @@ local function nearest(r)
 end
 
 local function attack()
- press(Enum.KeyCode.Two)
- task.wait(.25)
-
  local c=me.Character
  local tool=c and c:FindFirstChildOfClass("Tool")
  if tool then
   pcall(function() tool:Activate() end)
  end
-
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
  press(Enum.KeyCode.V)
@@ -78,6 +74,9 @@ start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
  status.Text="AUTO FARM ON"
+
+ – Выбираем второй слот только один раз
+ press(Enum.KeyCode.Two)
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -94,7 +93,7 @@ start.MouseButton1Click:Connect(function()
 
   if t then
    r.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,8,0),t.Position
+    t.Position-Vector3.new(0,5,0),t.Position
    )
    r.AssemblyLinearVelocity=Vector3.zero
   end
@@ -117,3 +116,6 @@ stop.MouseButton1Click:Connect(function()
   follow=nil
  end
 end)
+
+
+
