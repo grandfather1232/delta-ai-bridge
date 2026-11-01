@@ -2,11 +2,11 @@ local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
 local me=P.LocalPlayer
+
 local on=false
 local target
 local secondTool
 local switching=false
-local saved={}
 
 local Core=game:GetService("CoreGui")
 pcall(function()
@@ -51,33 +51,29 @@ local function press(k)
  V:SendKeyEvent(false,k,false,game)
 end
 
-local function setEvasion()
+-- Локальная попытка создать ForceField
+local function keepProtection()
  local c=me.Character
  if not c then return end
 
- for _,p in ipairs(c:GetDescendants()) do
-  if p:IsA("BasePart") then
-   if not saved[p] then
-    saved[p]={
-     Transparency=p.LocalTransparencyModifier,
-     CanCollide=p.CanCollide
-    }
-   end
-   p.LocalTransparencyModifier=1
-   p.CanCollide=false
-  end
+ if not c:FindFirstChildOfClass("ForceField") then
+  local ff=Instance.new("ForceField")
+  ff.Visible=true
+  ff.Parent=c
  end
 end
 
-local function restoreEvasion()
- for p,data in pairs(saved) do
-  if p and p.Parent then
-   p.LocalTransparencyModifier=data.Transparency
-   p.CanCollide=data.CanCollide
-  end
+me.CharacterAdded:Connect(function()
+ task.wait(.5)
+ keepProtection()
+end)
+
+task.spawn(function()
+ while true do
+  keepProtection()
+  task.wait(.5)
  end
- table.clear(saved)
-end
+end)
 
 local function nearest(r)
  local best,d
@@ -118,19 +114,10 @@ end
 
 local follow
 
-me.CharacterAdded:Connect(function()
- if on then
-  task.wait(1)
-  setEvasion()
- end
-end)
-
 start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
  status.Text="AUTO FARM ON"
-
- setEvasion()
 
  task.spawn(function()
   press(Enum.KeyCode.Two)
@@ -140,10 +127,6 @@ start.MouseButton1Click:Connect(function()
  end)
 
  follow=R.Heartbeat:Connect(function()
-  if not on then return end
-
-  setEvasion()
-
   local c=me.Character
   local r=c and c:FindFirstChild("HumanoidRootPart")
   if not r then return end
@@ -184,10 +167,7 @@ start.MouseButton1Click:Connect(function()
   while on do
    if target and target.Parent then attack() end
    task.wait(1)
-  e
-
-
-nd
+  end
  end)
 end)
 
@@ -201,8 +181,6 @@ stop.MouseButton1Click:Connect(function()
   follow:Disconnect()
   follow=nil
  end
-
- restoreEvasion()
 end)
 
 
