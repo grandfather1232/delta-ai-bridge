@@ -11,6 +11,11 @@ local startRemote=services.DungeonService.RF.StartDungeon
 local voteRemote=services.PartyService.RF.VoteOn
 local startedEvent=services.DungeonService.RE.DungeonStarted
 
+pcall(function()
+ local old=Core:FindFirstChild("AutoFarm")
+ if old then old:Destroy() end
+end)
+
 local on=false
 local target
 local secondTool
@@ -18,11 +23,6 @@ local switching=false
 local follow
 local retryBusy=false
 local startedCount=0
-
-pcall(function()
- local old=Core:FindFirstChild("AutoFarm")
- if old then old:Destroy() end
-end)
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -38,23 +38,17 @@ f.Draggable=true
 
 local status=Instance.new("TextLabel",f)
 status.Size=UDim2.new(1,0,0,25)
-status.Text="AUTO FARM OFF"
+status.Text="AUTO FARM ON"
 status.TextColor3=Color3.new(1,1,1)
 status.BackgroundTransparency=1
 status.TextSize=14
 
-local function btn(txt,y,color)
- local b=Instance.new("TextButton",f)
- b.Size=UDim2.new(1,-10,0,35)
- b.Position=UDim2.fromOffset(5,y)
- b.Text=txt
- b.TextColor3=Color3.new(1,1,1)
- b.BackgroundColor3=color
- return b
-end
-
-local start=btn("START",30,Color3.fromRGB(20,140,60))
-local stop=btn("STOP",75,Color3.fromRGB(160,40,40))
+local stop=Instance.new("TextButton",f)
+stop.Size=UDim2.new(1,-10,0,35)
+stop.Position=UDim2.fromOffset(5,65)
+stop.Text="STOP"
+stop.TextColor3=Color3.new(1,1,1)
+stop.BackgroundColor3=Color3.fromRGB(160,40,40)
 
 local function press(k)
  V:SendKeyEvent(true,k,false,game)
@@ -90,7 +84,6 @@ local function attack()
  V:SendMouseButtonEvent(0,0,0,true,game,0)
  task.wait(.1)
  V:SendMouseButtonEvent(0,0,0,false,game,0)
-
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
  press(Enum.KeyCode.V)
@@ -99,16 +92,13 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
-
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
-
  local button=screen:FindFirstChild("RetryBtn",true)
  if not button or not button:IsA("GuiObject") then
   return false
  end
-
  local obj=button
  while obj and obj~=pg do
   if obj:IsA("GuiObject") and not obj.Visible then
@@ -119,7 +109,6 @@ local function dungeonComplete()
   end
   obj=obj.Parent
  end
-
  return true
 end
 
@@ -129,15 +118,13 @@ end)
 
 local function startDungeon()
  status.Text="STARTING DUNGEON"
- local ok,err=pcall(function()
+ local ok=pcall(function()
   return startRemote:InvokeServer()
  end)
-
  if ok then
-  status.Text="DUNGEON STARTED"
+  status.Text="AUTO FARM ON"
  else
   status.Text="START ERROR"
-  warn(err)
  end
 end
 
@@ -146,61 +133,53 @@ local function retryLoop()
   if dungeonComplete() and not retryBusy then
    retryBusy=true
    status.Text="RETRYING..."
-
    local before=startedCount
-   local ok,err=pcall(function()
+
+   local ok=pcall(function()
     return voteRemote:InvokeServer("Retry")
    end)
 
-   if not ok then
-    status.Text="RETRY ERROR"
-    warn(err)
-   else
-    status.Text="WAITING FOR DUNGEON"
-
+   if ok then
+    status.Text="WAITING..."
     local elapsed=0
     while on and elapsed<10 do
      if startedCount>before then break end
      task.wait(.5)
      elapsed=elapsed+.5
     end
-
     if on and startedCount==before then
      startDungeon()
     end
+   else
+    status.Text="RETRY ERROR"
    end
 
    while on and dungeonComplete() do
     task.wait(.5)
    end
-
    task.wait(2)
    retryBusy=false
   end
-
-  task.wait(.5
-
-
-)
+  task.wait(.5)
  end
 end
 
-start.MouseButton1Click:Connect(function()
+local function startFarm()
  if on then return end
  on=true
- target=nil
  status.Text="AUTO FARM ON"
 
  task.spawn(function()
   press(Enum.KeyCode.Two)
   task.wait(.3)
-  local c=me.Character
+  local c=me.
+
+
+Character
   secondTool=c and c:FindFirstChildOfClass("Tool")
  end)
 
- task.spawn(function()
-  startDungeon()
- end)
+ task.spawn(startDungeon)
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -209,7 +188,6 @@ start.MouseButton1Click:Connect(function()
 
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
-
   if not h or not t or h.Health<=0 then
    target=nearest(r)
    t=target and target:FindFirstChild("HumanoidRootPart")
@@ -227,14 +205,12 @@ start.MouseButton1Click:Connect(function()
   while on do
    local c=me.Character
    local equipped=c and c:FindFirstChildOfClass("Tool")
-
    if secondTool and equipped~=secondTool and not switching then
     switching=true
     press(Enum.KeyCode.Two)
     task.wait(.4)
     switching=false
    end
-
    task.wait(.5)
   end
  end)
@@ -249,7 +225,7 @@ start.MouseButton1Click:Connect(function()
  end)
 
  task.spawn(retryLoop)
-end)
+end
 
 stop.MouseButton1Click:Connect(function()
  on=false
@@ -257,9 +233,16 @@ stop.MouseButton1Click:Connect(function()
  secondTool=nil
  retryBusy=false
  status.Text="AUTO FARM OFF"
-
  if follow then
   follow:Disconnect()
   follow=nil
  end
 end)
+
+-- Автоматический запуск при выполнении скрипта
+startFarm()
+
+
+
+1 сообщение
+
