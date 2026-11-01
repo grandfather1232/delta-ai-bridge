@@ -5,18 +5,27 @@ local me=P.LocalPlayer
 local on=false
 local target
 
-local g=Instance.new("ScreenGui",game:GetService("CoreGui"))
+local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
+g.ResetOnSpawn=false
+g.Parent=game:GetService("CoreGui")
+
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(145,90)
-f.Position=UDim2.new(.5,-72,.5,0)
+f.Size=UDim2.fromOffset(155,115)
+f.Position=UDim2.new(.5,-77,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
 f.Draggable=true
 
+local status=Instance.new("TextLabel",f)
+status.Size=UDim2.new(1,0,0,25)
+status.Text="AUTO FARM OFF"
+status.TextColor3=Color3.new(1,1,1)
+status.BackgroundTransparency=1
+
 local function btn(txt,y,color)
  local b=Instance.new("TextButton",f)
- b.Size=UDim2.new(1,-10,0,32)
+ b.Size=UDim2.new(1,-10,0,35)
  b.Position=UDim2.fromOffset(5,y)
  b.Text=txt
  b.TextColor3=Color3.new(1,1,1)
@@ -24,8 +33,8 @@ local function btn(txt,y,color)
  return b
 end
 
-local start=btn("START",5,Color3.fromRGB(20,140,60))
-local stop=btn("STOP",48,Color3.fromRGB(160,40,40))
+local start=btn("START",30,Color3.fromRGB(20,140,60))
+local stop=btn("STOP",72,Color3.fromRGB(160,40,40))
 
 local function nearest(r)
  local best,d
@@ -43,28 +52,46 @@ local function nearest(r)
  return best
 end
 
-local function key(k)
+local function equipSecond()
+ local c=me.Character
+ local h=c and c:FindFirstChildOfClass("Humanoid")
+ local tools={}
+ if not h then return end
+ for _,v in ipairs(me.Backpack:GetChildren()) do
+  if v:IsA("Tool") then table.insert(tools,v) end
+ end
+ if tools[2] then h:EquipTool(tools[2]) end
+end
+
+local function press(k)
  V:SendKeyEvent(true,k,false,game)
- task.wait(.1)
+ task.wait(.12)
  V:SendKeyEvent(false,k,false,game)
 end
 
 local function attack()
- local cam=workspace.CurrentCamera
- local p=cam.ViewportSize/2
- V:SendMouseButtonEvent(p.X,p.Y,0,true,game,0)
- task.wait(.1)
- V:SendMouseButtonEvent(p.X,p.Y,0,false,game,0)
- task.wait(.2)
- key(Enum.KeyCode.F)
- key(Enum.KeyCode.C)
- key(Enum.KeyCode.V)
+ local c=me.Character
+ local h=c and c:FindFirstChildOfClass("Humanoid")
+ if not h then return end
+
+ equipSecond()
+ task.wait(.15)
+
+ local tool=c:FindFirstChildOfClass("Tool")
+ if tool then
+  pcall(function() tool:Activate() end)
+ end
+
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
 end
 
 local follow
 start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
+ status.Text="AUTO FARM ON"
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -73,6 +100,7 @@ start.MouseButton1Click:Connect(function()
 
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
+
   if not h or not t or h.Health<=0 then
    target=nearest(r)
    t=target and target:FindFirstChild("HumanoidRootPart")
@@ -88,8 +116,10 @@ start.MouseButton1Click:Connect(function()
 
  task.spawn(function()
   while on do
-   if target and target.Parent then attack() end
-   task.wait(.3)
+   if target and target.Parent then
+    attack()
+   end
+   task.wait(1)
   end
  end)
 end)
@@ -97,10 +127,9 @@ end)
 stop.MouseButton1Click:Connect(function()
  on=false
  target=nil
- if follow then follow:Disconnect() follow=nil end
+ status.Text="AUTO FARM OFF"
+ if follow then
+  follow:Disconnect()
+  follow=nil
+ end
 end)
-
-
-
-1 сообщение
-
