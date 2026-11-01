@@ -2,7 +2,6 @@ local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
 local me=P.LocalPlayer
-
 local on=false
 local target
 local secondTool
@@ -10,8 +9,7 @@ local switching=false
 
 local Core=game:GetService("CoreGui")
 pcall(function()
- local old=Core:FindFirstChild("AutoFarm")
- if old then old:Destroy() end
+ Core:FindFirstChild("AutoFarm"):Destroy()
 end)
 
 local g=Instance.new("ScreenGui")
@@ -71,23 +69,21 @@ local function attack()
  local c=me.Character
  local tool=c and c:FindFirstChildOfClass("Tool")
  local t=target and target:FindFirstChild("HumanoidRootPart")
-
  if t then
   local cam=workspace.CurrentCamera
   if cam then
    cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
   end
  end
-
  if tool then
-  pcall(function()
-   tool:Activate()
-  end)
+  pcall(function() tool:Activate() end)
  end
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
 end
 
 local follow
-
 start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
@@ -125,23 +121,19 @@ start.MouseButton1Click:Connect(function()
   while on do
    local c=me.Character
    local equipped=c and c:FindFirstChildOfClass("Tool")
-
    if secondTool and equipped~=secondTool and not switching then
     switching=true
     press(Enum.KeyCode.Two)
     task.wait(.4)
     switching=false
    end
-
    task.wait(.5)
   end
  end)
 
  task.spawn(function()
   while on do
-   if target and target.Parent then
-    attack()
-   end
+   if target and target.Parent then attack() end
    task.wait(1)
   end
  end)
@@ -152,7 +144,6 @@ stop.MouseButton1Click:Connect(function()
  target=nil
  secondTool=nil
  status.Text="AUTO FARM OFF"
-
  if follow then
   follow:Disconnect()
   follow=nil
