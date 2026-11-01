@@ -6,12 +6,10 @@ local on=false
 local target
 local secondTool
 local switching=false
-local saved={}
 
 local Core=game:GetService("CoreGui")
 pcall(function()
- local old=Core:FindFirstChild("AutoFarm")
- if old then old:Destroy() end
+ Core:FindFirstChild("AutoFarm"):Destroy()
 end)
 
 local g=Instance.new("ScreenGui")
@@ -51,34 +49,6 @@ local function press(k)
  V:SendKeyEvent(false,k,false,game)
 end
 
-local function setEvasion()
- local c=me.Character
- if not c then return end
-
- for _,p in ipairs(c:GetDescendants()) do
-  if p:IsA("BasePart") then
-   if not saved[p] then
-    saved[p]={
-     Transparency=p.LocalTransparencyModifier,
-     CanCollide=p.CanCollide
-    }
-   end
-   p.LocalTransparencyModifier=1
-   p.CanCollide=false
-  end
- end
-end
-
-local function restoreEvasion()
- for p,data in pairs(saved) do
-  if p and p.Parent then
-   p.LocalTransparencyModifier=data.Transparency
-   p.CanCollide=data.CanCollide
-  end
- end
- table.clear(saved)
-end
-
 local function nearest(r)
  local best,d
  for _,n in ipairs(workspace:GetDescendants()) do
@@ -99,38 +69,25 @@ local function attack()
  local c=me.Character
  local tool=c and c:FindFirstChildOfClass("Tool")
  local t=target and target:FindFirstChild("HumanoidRootPart")
-
  if t then
   local cam=workspace.CurrentCamera
   if cam then
    cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
   end
  end
-
  if tool then
   pcall(function() tool:Activate() end)
  end
-
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
  press(Enum.KeyCode.V)
 end
 
 local follow
-
-me.CharacterAdded:Connect(function()
- if on then
-  task.wait(1)
-  setEvasion()
- end
-end)
-
 start.MouseButton1Click:Connect(function()
  if on then return end
  on=true
  status.Text="AUTO FARM ON"
-
- setEvasion()
 
  task.spawn(function()
   press(Enum.KeyCode.Two)
@@ -140,10 +97,6 @@ start.MouseButton1Click:Connect(function()
  end)
 
  follow=R.Heartbeat:Connect(function()
-  if not on then return end
-
-  setEvasion()
-
   local c=me.Character
   local r=c and c:FindFirstChild("HumanoidRootPart")
   if not r then return end
@@ -168,14 +121,12 @@ start.MouseButton1Click:Connect(function()
   while on do
    local c=me.Character
    local equipped=c and c:FindFirstChildOfClass("Tool")
-
    if secondTool and equipped~=secondTool and not switching then
     switching=true
     press(Enum.KeyCode.Two)
     task.wait(.4)
     switching=false
    end
-
    task.wait(.5)
   end
  end)
@@ -184,4 +135,17 @@ start.MouseButton1Click:Connect(function()
   while on do
    if target and target.Parent then attack() end
    task.wait(1)
-  e
+  end
+ end)
+end)
+
+stop.MouseButton1Click:Connect(function()
+ on=false
+ target=nil
+ secondTool=nil
+ status.Text="AUTO FARM OFF"
+ if follow then
+  follow:Disconnect()
+  follow=nil
+ end
+end)
