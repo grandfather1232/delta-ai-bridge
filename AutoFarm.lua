@@ -51,30 +51,6 @@ local function press(k)
  V:SendKeyEvent(false,k,false,game)
 end
 
--- Локальная попытка создать ForceField
-local function keepProtection()
- local c=me.Character
- if not c then return end
-
- if not c:FindFirstChildOfClass("ForceField") then
-  local ff=Instance.new("ForceField")
-  ff.Visible=true
-  ff.Parent=c
- end
-end
-
-me.CharacterAdded:Connect(function()
- task.wait(.5)
- keepProtection()
-end)
-
-task.spawn(function()
- while true do
-  keepProtection()
-  task.wait(.5)
- end
-end)
-
 local function nearest(r)
  local best,d
  for _,n in ipairs(workspace:GetDescendants()) do
@@ -104,12 +80,10 @@ local function attack()
  end
 
  if tool then
-  pcall(function() tool:Activate() end)
+  pcall(function()
+   tool:Activate()
+  end)
  end
-
- press(Enum.KeyCode.F)
- press(Enum.KeyCode.C)
- press(Enum.KeyCode.V)
 end
 
 local follow
@@ -165,7 +139,9 @@ start.MouseButton1Click:Connect(function()
 
  task.spawn(function()
   while on do
-   if target and target.Parent then attack() end
+   if target and target.Parent then
+    attack()
+   end
    task.wait(1)
   end
  end)
@@ -182,8 +158,3 @@ stop.MouseButton1Click:Connect(function()
   follow=nil
  end
 end)
-
-
-
-
-
