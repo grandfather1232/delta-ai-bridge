@@ -7,10 +7,15 @@ local target
 local secondTool
 local switching=false
 
+local Core=game:GetService("CoreGui")
+pcall(function()
+ Core:FindFirstChild("AutoFarm"):Destroy()
+end)
+
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
 g.ResetOnSpawn=false
-g.Parent=game:GetService("CoreGui")
+g.Parent=Core
 
 local f=Instance.new("Frame",g)
 f.Size=UDim2.fromOffset(155,115)
@@ -63,6 +68,13 @@ end
 local function attack()
  local c=me.Character
  local tool=c and c:FindFirstChildOfClass("Tool")
+ local t=target and target:FindFirstChild("HumanoidRootPart")
+ if t then
+  local cam=workspace.CurrentCamera
+  if cam then
+   cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
+  end
+ end
  if tool then
   pcall(function() tool:Activate() end)
  end
@@ -99,7 +111,7 @@ start.MouseButton1Click:Connect(function()
 
   if t then
    r.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,7,0),t.Position
+    t.Position-Vector3.new(0,8,0),t.Position
    )
    r.AssemblyLinearVelocity=Vector3.zero
   end
@@ -109,14 +121,12 @@ start.MouseButton1Click:Connect(function()
   while on do
    local c=me.Character
    local equipped=c and c:FindFirstChildOfClass("Tool")
-
    if secondTool and equipped~=secondTool and not switching then
     switching=true
     press(Enum.KeyCode.Two)
     task.wait(.4)
     switching=false
    end
-
    task.wait(.5)
   end
  end)
