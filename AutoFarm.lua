@@ -4,6 +4,8 @@ local V=game:GetService("VirtualInputManager")
 local me=P.LocalPlayer
 local on=false
 local target
+local secondTool
+local switching=false
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -75,7 +77,12 @@ start.MouseButton1Click:Connect(function()
  on=true
  status.Text="AUTO FARM ON"
 
- press(Enum.KeyCode.Two)
+ task.spawn(function()
+  press(Enum.KeyCode.Two)
+  task.wait(.3)
+  local c=me.Character
+  secondTool=c and c:FindFirstChildOfClass("Tool")
+ end)
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -100,6 +107,22 @@ start.MouseButton1Click:Connect(function()
 
  task.spawn(function()
   while on do
+   local c=me.Character
+   local equipped=c and c:FindFirstChildOfClass("Tool")
+
+   if secondTool and equipped~=secondTool and not switching then
+    switching=true
+    press(Enum.KeyCode.Two)
+    task.wait(.4)
+    switching=false
+   end
+
+   task.wait(.5)
+  end
+ end)
+
+ task.spawn(function()
+  while on do
    if target and target.Parent then attack() end
    task.wait(1)
   end
@@ -109,6 +132,7 @@ end)
 stop.MouseButton1Click:Connect(function()
  on=false
  target=nil
+ secondTool=nil
  status.Text="AUTO FARM OFF"
  if follow then
   follow:Disconnect()
