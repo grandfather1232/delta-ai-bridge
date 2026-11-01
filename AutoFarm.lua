@@ -75,8 +75,7 @@ start.MouseButton1Click:Connect(function()
  on=true
  status.Text="AUTO FARM ON"
 
- – Второй слот выбирается один раз
- task.spawn(press,Enum.KeyCode.Two)
+ press(Enum.KeyCode.Two)
 
  follow=R.Heartbeat:Connect(function()
   local c=me.Character
@@ -116,3 +115,6 @@ stop.MouseButton1Click:Connect(function()
   follow=nil
  end
 end)
+
+
+
