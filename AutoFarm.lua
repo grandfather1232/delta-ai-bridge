@@ -36,6 +36,12 @@ end
 local start=btn("START",30,Color3.fromRGB(20,140,60))
 local stop=btn("STOP",72,Color3.fromRGB(160,40,40))
 
+local function press(k)
+ V:SendKeyEvent(true,k,false,game)
+ task.wait(.12)
+ V:SendKeyEvent(false,k,false,game)
+end
+
 local function nearest(r)
  local best,d
  for _,n in ipairs(workspace:GetDescendants()) do
@@ -52,32 +58,12 @@ local function nearest(r)
  return best
 end
 
-local function equipSecond()
- local c=me.Character
- local h=c and c:FindFirstChildOfClass("Humanoid")
- local tools={}
- if not h then return end
- for _,v in ipairs(me.Backpack:GetChildren()) do
-  if v:IsA("Tool") then table.insert(tools,v) end
- end
- if tools[2] then h:EquipTool(tools[2]) end
-end
-
-local function press(k)
- V:SendKeyEvent(true,k,false,game)
- task.wait(.12)
- V:SendKeyEvent(false,k,false,game)
-end
-
 local function attack()
+ press(Enum.KeyCode.Two)
+ task.wait(.25)
+
  local c=me.Character
- local h=c and c:FindFirstChildOfClass("Humanoid")
- if not h then return end
-
- equipSecond()
- task.wait(.15)
-
- local tool=c:FindFirstChildOfClass("Tool")
+ local tool=c and c:FindFirstChildOfClass("Tool")
  if tool then
   pcall(function() tool:Activate() end)
  end
@@ -116,9 +102,7 @@ start.MouseButton1Click:Connect(function()
 
  task.spawn(function()
   while on do
-   if target and target.Parent then
-    attack()
-   end
+   if target and target.Parent then attack() end
    task.wait(1)
   end
  end)
