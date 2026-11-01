@@ -51,6 +51,12 @@ local function press(k)
  V:SendKeyEvent(false,k,false,game)
 end
 
+local function clickAt(x,y)
+ V:SendMouseButtonEvent(x,y,0,true,game,0)
+ task.wait(.05)
+ V:SendMouseButtonEvent(x,y,0,false,game,0)
+end
+
 local function nearest(r)
  local best,d
  for _,n in ipairs(workspace:GetDescendants()) do
@@ -143,6 +149,20 @@ start.MouseButton1Click:Connect(function()
     attack()
    end
    task.wait(.1)
+  end
+ end)
+
+ – АВТОКЛИКЕР: ТРИ КООРДИНАТЫ
+ task.spawn(function()
+  while on do
+   clickAt(362,440)
+   task.wait(.1)
+
+   clickAt(544,497)
+   task.wait(.1)
+
+   clickAt(480,89)
+   task.wait(2)
   end
  end)
 end)
