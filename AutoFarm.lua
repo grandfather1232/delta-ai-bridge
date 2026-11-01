@@ -1,77 +1,265 @@
-local r = game:GetService("ReplicatedStorage")
-local result = {}
+local P=game:GetService("Players")
+local R=game:GetService("RunService")
+local V=game:GetService("VirtualInputManager")
+local RS=game:GetService("ReplicatedStorage")
+local Core=game:GetService("CoreGui")
+local me=P.LocalPlayer
+local pg=me:WaitForChild("PlayerGui")
 
-for _, v in ipairs(r:GetDescendants()) do
-    if (v:IsA("RemoteFunction") or v:IsA("RemoteEvent"))
-    and (
-        v.Name:lower():find("dungeon")
-        or v.Name:lower():find("play")
-        or v.Name:lower():find("start")
-        or v.Name:lower():find("party")
-    ) then
-        table.insert(result, v:GetFullName().." ["..v.ClassName.."]")
-    end
+local services=RS.ReplicatedStorage.Packages.Knit.Services
+local startRemote=services.DungeonService.RF.StartDungeon
+local voteRemote=services.PartyService.RF.VoteOn
+local startedEvent=services.DungeonService.RE.DungeonStarted
+
+local on=false
+local target
+local secondTool
+local switching=false
+local follow
+local retryBusy=false
+local startedCount=0
+
+pcall(function()
+ local old=Core:FindFirstChild("AutoFarm")
+ if old then old:Destroy() end
+end)
+
+local g=Instance.new("ScreenGui")
+g.Name="AutoFarm"
+g.ResetOnSpawn=false
+g.Parent=Core
+
+local f=Instance.new("Frame",g)
+f.Size=UDim2.fromOffset(165,125)
+f.Position=UDim2.new(.5,-82,.5,0)
+f.BackgroundColor3=Color3.fromRGB(35,35,45)
+f.Active=true
+f.Draggable=true
+
+local status=Instance.new("TextLabel",f)
+status.Size=UDim2.new(1,0,0,25)
+status.Text="AUTO FARM OFF"
+status.TextColor3=Color3.new(1,1,1)
+status.BackgroundTransparency=1
+status.TextSize=14
+
+local function btn(txt,y,color)
+ local b=Instance.new("TextButton",f)
+ b.Size=UDim2.new(1,-10,0,35)
+ b.Position=UDim2.fromOffset(5,y)
+ b.Text=txt
+ b.TextColor3=Color3.new(1,1,1)
+ b.BackgroundColor3=color
+ return b
 end
 
-local core = game:GetService("CoreGui")
-local old = core:FindFirstChild("RemoteScan")
-if old then old:Destroy() end
+local start=btn("START",30,Color3.fromRGB(20,140,60))
+local stop=btn("STOP",75,Color3.fromRGB(160,40,40))
 
-local s = Instance.new("ScreenGui")
-s.Name = "RemoteScan"
-s.Parent = core
+local function press(k)
+ V:SendKeyEvent(true,k,false,game)
+ task.wait(.12)
+ V:SendKeyEvent(false,k,false,game)
+end
 
-local f = Instance.new("Frame",s)
-f.Size = UDim2.new(.9,0,.75,0)
-f.Position = UDim2.new(.05,0,.12,0)
-f.BackgroundColor3 = Color3.fromRGB(25,25,35)
+local function nearest(r)
+ local best,d
+ for _,n in ipairs(workspace:GetDescendants()) do
+  if n:IsA("Model") and n~=me.Character
+  and not P:GetPlayerFromCharacter(n) then
+   local h=n:FindFirstChildOfClass("Humanoid")
+   local t=n:FindFirstChild("HumanoidRootPart")
+   if h and t and h.Health>0 then
+    local x=(r.Position-t.Position).Magnitude
+    if not d or x<d then best,d=n,x end
+   end
+  end
+ end
+ return best
+end
 
-local title = Instance.new("TextLabel",f)
-title.Size = UDim2.new(1,0,0,35)
-title.Text = "REMOTE SCANNER: "..#result
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextSize = 18
+local function attack()
+ local t=target and target:FindFirstChild("HumanoidRootPart")
+ if t then
+  local cam=workspace.CurrentCamera
+  if cam then
+   cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
+  end
+ end
 
-local copy = Instance.new("TextButton",f)
-copy.Size = UDim2.new(.45,0,0,40)
-copy.Position = UDim2.new(.025,0,1,-45)
-copy.Text = "COPY ALL"
-copy.TextSize = 17
-copy.BackgroundColor3 = Color3.fromRGB(30,140,70)
-copy.TextColor3 = Color3.new(1,1,1)
+ V:SendMouseButtonEvent(0,0,0,true,game,0)
+ task.wait(.1)
+ V:SendMouseButtonEvent(0,0,0,false,game,0)
 
-local close = Instance.new("TextButton",f)
-close.Size = UDim2.new(.45,0,0,40)
-close.Position = UDim2.new(.525,0,1,-45)
-close.Text = "CLOSE"
-close.TextSize = 17
-close.MouseButton1Click:Connect(function()
-    s:Destroy()
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
+end
+
+local function dungeonComplete()
+ local screen=pg:FindFirstChild("DungeonComplete")
+ if not screen then return false end
+
+ if screen:IsA("ScreenGui") and not screen.Enabled then
+  return false
+ end
+
+ local button=screen:FindFirstChild("RetryBtn",true)
+ if not button or not button:IsA("GuiObject") then
+  return false
+ end
+
+ local obj=button
+ while obj and obj~=pg do
+  if obj:IsA("GuiObject") and not obj.Visible then
+   return false
+  end
+  if obj:IsA("ScreenGui") and not obj.Enabled then
+   return false
+  end
+  obj=obj.Parent
+ end
+
+ return true
+end
+
+startedEvent.OnClientEvent:Connect(function()
+ startedCount=startedCount+1
 end)
 
-local box = Instance.new("TextBox",f)
-box.Position = UDim2.new(.025,0,0,40)
-box.Size = UDim2.new(.95,0,1,-95)
-box.BackgroundColor3 = Color3.fromRGB(15,15,20)
-box.TextColor3 = Color3.new(1,1,1)
-box.TextSize = 13
-box.TextXAlignment = Enum.TextXAlignment.Left
-box.TextYAlignment = Enum.TextYAlignment.Top
-box.TextWrapped = false
-box.MultiLine = true
-box.ClearTextOnFocus = false
-box.TextEditable = false
-box.Text = table.concat(result,"\n")
+local function startDungeon()
+ status.Text="STARTING DUNGEON"
+ local ok,err=pcall(function()
+  return startRemote:InvokeServer()
+ end)
 
-copy.MouseButton1Click:Connect(function()
-    if setclipboard then
-        setclipboard(box.Text)
-        copy.Text = "COPIED!"
-    else
-        copy.Text = "SELECT TEXT"
+ if ok then
+  status.Text="DUNGEON STARTED"
+ else
+  status.Text="START ERROR"
+  warn(err)
+ end
+end
+
+local function retryLoop()
+ while on do
+  if dungeonComplete() and not retryBusy then
+   retryBusy=true
+   status.Text="RETRYING..."
+
+   local before=startedCount
+   local ok,err=pcall(function()
+    return voteRemote:InvokeServer("Retry")
+   end)
+
+   if not ok then
+    status.Text="RETRY ERROR"
+    warn(err)
+   else
+    status.Text="WAITING FOR DUNGEON"
+
+    local elapsed=0
+    while on and elapsed<10 do
+     if startedCount>before then break end
+     task.wait(.5)
+     elapsed=elapsed+.5
     end
+
+    if on and startedCount==before then
+     startDungeon()
+    end
+   end
+
+   while on and dungeonComplete() do
+    task.wait(.5)
+   end
+
+   task.wait(2)
+   retryBusy=false
+  end
+
+  task.wait(.5
+
+
+)
+ end
+end
+
+start.MouseButton1Click:Connect(function()
+ if on then return end
+ on=true
+ target=nil
+ status.Text="AUTO FARM ON"
+
+ task.spawn(function()
+  press(Enum.KeyCode.Two)
+  task.wait(.3)
+  local c=me.Character
+  secondTool=c and c:FindFirstChildOfClass("Tool")
+ end)
+
+ task.spawn(function()
+  startDungeon()
+ end)
+
+ follow=R.Heartbeat:Connect(function()
+  local c=me.Character
+  local r=c and c:FindFirstChild("HumanoidRootPart")
+  if not r then return end
+
+  local h=target and target:FindFirstChildOfClass("Humanoid")
+  local t=target and target:FindFirstChild("HumanoidRootPart")
+
+  if not h or not t or h.Health<=0 then
+   target=nearest(r)
+   t=target and target:FindFirstChild("HumanoidRootPart")
+  end
+
+  if t then
+   r.CFrame=CFrame.lookAt(
+    t.Position-Vector3.new(0,8,0),t.Position
+   )
+   r.AssemblyLinearVelocity=Vector3.zero
+  end
+ end)
+
+ task.spawn(function()
+  while on do
+   local c=me.Character
+   local equipped=c and c:FindFirstChildOfClass("Tool")
+
+   if secondTool and equipped~=secondTool and not switching then
+    switching=true
+    press(Enum.KeyCode.Two)
+    task.wait(.4)
+    switching=false
+   end
+
+   task.wait(.5)
+  end
+ end)
+
+ task.spawn(function()
+  while on do
+   if target and target.Parent then
+    attack()
+   end
+   task.wait(1)
+  end
+ end)
+
+ task.spawn(retryLoop)
 end)
 
+stop.MouseButton1Click:Connect(function()
+ on=false
+ target=nil
+ secondTool=nil
+ retryBusy=false
+ status.Text="AUTO FARM OFF"
 
-
+ if follow then
+  follow:Disconnect()
+  follow=nil
+ end
+end)
