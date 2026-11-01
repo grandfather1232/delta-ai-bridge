@@ -1,22 +1,21 @@
 local P = game:GetService("Players")
 local R = game:GetService("RunService")
 local V = game:GetService("VirtualInputManager")
-local Core = game:GetService("CoreGui")
-
 local me = P.LocalPlayer
 
-local on = true
+local on = false
 local target
 local secondTool
 local switching = false
 local follow
+
+local Core = game:GetService("CoreGui")
 
 pcall(function()
     local old = Core:FindFirstChild("AutoFarm")
     if old then old:Destroy() end
 end)
 
--- МЕНЮ
 local g = Instance.new("ScreenGui")
 g.Name = "AutoFarm"
 g.ResetOnSpawn = false
@@ -31,7 +30,7 @@ f.Draggable = true
 
 local status = Instance.new("TextLabel", f)
 status.Size = UDim2.new(1, 0, 0, 25)
-status.Text = "AUTO FARM ON"
+status.Text = "AUTO FARM OFF"
 status.TextColor3 = Color3.new(1, 1, 1)
 status.BackgroundTransparency = 1
 
@@ -52,12 +51,6 @@ local function press(k)
     V:SendKeyEvent(true, k, false, game)
     task.wait(0.12)
     V:SendKeyEvent(false, k, false, game)
-end
-
-local function clickAt(x, y)
-    V:SendMouseButtonEvent(x, y, 0, true, game, 0)
-    task.wait(0.05)
-    V:SendMouseButtonEvent(x, y, 0, false, game, 0)
 end
 
 local function nearest(r)
@@ -94,7 +87,7 @@ local function attack()
     end
 
     V:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-    task.wait(0.05)
+    task.wait(0.1)
     V:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 
     press(Enum.KeyCode.F)
@@ -102,9 +95,9 @@ local function attack()
     press(Enum.KeyCode.V)
 end
 
--- АВТОФАРМ
-local function startFarm()
+start.MouseButton1Click:Connect(function()
     if on then return end
+
     on = true
     status.Text = "AUTO FARM ON"
 
@@ -117,8 +110,6 @@ local function startFarm()
     end)
 
     follow = R.Heartbeat:Connect(function()
-        if not on then return end
-
         local c = me.Character
         local r = c and c:FindFirstChild("HumanoidRootPart")
         if not r then return end
@@ -148,43 +139,25 @@ local function startFarm()
             if secondTool and equipped ~= secondTool and not switching then
                 switching = true
                 press(Enum.KeyCode.Two)
-                task.wait(0.2)
+                task.wait(0.4)
                 switching = false
             end
 
-
-task.wait(0.5)
+            task.wait(0.5)
         end
     end)
 
-    – АТАКИ
     task.spawn(function()
         while on do
             if target and target.Parent then
                 attack()
             end
-            task.wait(0.1)
+            task.wa
+
+
+it(0.1)
         end
     end)
-
-    – ТРИ КООРДИНАТЫ
-    task.spawn(function()
-        while on do
-            clickAt(362, 440)
-            task.wait(0.1)
-
-            clickAt(544, 497)
-            task.wait(0.1)
-
-            clickAt(480, 89)
-            task.wait(2)
-        end
-    end)
-end
-
--- КНОПКИ МЕНЮ
-start.MouseButton1Click:Connect(function()
-    startFarm()
 end)
 
 stop.MouseButton1Click:Connect(function()
@@ -199,5 +172,7 @@ stop.MouseButton1Click:Connect(function()
     end
 end)
 
--- АВТОЗАПУСК ПРИ ЗАПУСКЕ DELTA
-startFarm()
+
+
+
+
