@@ -1,3 +1,14 @@
+local url = "https://raw.githubusercontent.com/grandfather1232/delta-ai-bridge/main/AutoFarm.lua"
+
+local queue = queue_on_teleport or
+    (syn and syn.queue_on_teleport)
+
+if queue then
+    queue([[
+        task.wait(8)
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/grandfather1232/delta-ai-bridge/main/AutoFarm.lua"))()
+    ]])
+end
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
