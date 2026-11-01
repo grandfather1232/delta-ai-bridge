@@ -78,8 +78,12 @@ local function attack()
  end
 
  V:SendMouseButtonEvent(0,0,0,true,game,0)
- task.wait(0.1)
+ task.wait(.1)
  V:SendMouseButtonEvent(0,0,0,false,game,0)
+
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
 end
 
 local follow
@@ -154,3 +158,8 @@ stop.MouseButton1Click:Connect(function()
   follow=nil
  end
 end)
+
+
+
+
+
