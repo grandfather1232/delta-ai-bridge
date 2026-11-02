@@ -19,6 +19,9 @@ end)
 
 local on=false
 local target=nil
+local targetLockUntil=0
+local TARGET_LOCK_TIME=3
+
 local follow=nil
 local retryBusy=false
 local startedCount=0
@@ -96,7 +99,6 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
--- Поиск ближайшего моба используется только при выборе новой цели
 local function nearest(r)
  local folder=workspace:FindFirstChild("Mobs")
  if not folder then return nil end
@@ -122,12 +124,16 @@ local function nearest(r)
  return best
 end
 
--- Проверка закреплённой цели
 local function isTargetAlive()
  local folder=workspace:FindFirstChild("Mobs")
- if not folder or not target then return false end
- if not target:IsA("Model") then return false end
- if target.Parent~=folder then return false end
+
+ if not folder or not target then
+  return false
+ end
+
+ if not target:IsA("Model") or target.Parent~=folder then
+  return false
+ end
 
  local h=target:FindFirstChildOfClass("Humanoid")
  local t=target:FindFirstChild("HumanoidRootPart")
@@ -145,6 +151,7 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
+
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
@@ -159,23 +166,26 @@ local function dungeonComplete()
   if obj:IsA("GuiObject") and not obj.Visible then
    return false
   end
+
   if obj:IsA("ScreenGui") and not obj.Enabled then
    return false
   end
+
   obj=obj.Parent
  end
 
  return true
 end
 
-startedEvent.OnClientEvent:Co
-
-
-nnect(function()
+startedEvent.OnClientEvent:Connect(function()
  startedCount=startedCount+1
- keyDone=false
+ keyDone=fals
+
+
+e
  doorDone=false
  target=nil
+ targetLockUntil=0
 end)
 
 local function startDungeon()
@@ -239,6 +249,7 @@ local function findKey()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="key" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChild("Handle",true)
     or obj:FindFirstChildWhichIsA("BasePart",true)
@@ -258,6 +269,7 @@ local function findDoors()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="keyhole" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
@@ -344,7 +356,10 @@ local function unlockDoors()
  end
 
  interacting=false
- if on then status.Text="AUTO FARM ON" end
+
+ if on then
+  status.Text="AUTO FARM ON"
+ end
 
  return on
 end
@@ -377,25 +392,25 @@ local function startFarm()
 
  task.spawn(startDungeon)
 
- local targetCheckAt=0
-
  follow=R.Heartbeat:Connect(function()
   if not on or interacting then return end
 
   local root=getRoot()
   if not root then return end
 
-  – Проверяем текущую цель раз в 0.5 секунды
-  if os.clock()>=targetCheckAt then
-   targetCheckAt=os.clock()+.5
+  – Сохраняем текущую цель, пока она жива
+  if not isTargetAlive() then
+   target=nil
 
-   – Новую цель выбираем только если старая погибла или исчезла
-   if not isTargetAlive() then
-    target=nearest(root)
+   – Не выбираем новую цель чаще одного раза в 3 секунды
+   if os.clock()>=targetLockUntil then target=nearest(root)
+
+    if target then
+     targetLockUntil=os.clock()+TARGET_LOCK_TIME
+    end
    end
   end
 
-  – Продолжаем следовать только за закреплённой целью
   if isTargetAlive() then
    local t=target:FindFirstChild("HumanoidRootPart")
 
@@ -408,7 +423,7 @@ local function startFarm()
   end
  end)
 
- – Клики мышью в отдельном цикле
+ – Клики мышью отдельно
  task.spawn(function()
   while on do
    if not interacting and isTargetAlive() then
@@ -441,6 +456,7 @@ end
 me.CharacterAdded:Connect(function()
  characterVersion=characterVersion+1
  target=nil
+ targetLockUntil=0
 
  if on then
   task.spawn(function()
@@ -506,3 +522,8 @@ local run=loadstring(BOOT)
 if run then
  run()
 end
+
+
+
+
+
