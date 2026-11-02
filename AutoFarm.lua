@@ -1,3 +1,4 @@
+local SCRIPT = [==[
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
@@ -73,7 +74,6 @@ end
 local function selectSecondSlot(version)
  if slotBusy or not on then return end
  slotBusy=true
-
  task.wait(1.5)
 
  if on and version==characterVersion then
@@ -85,8 +85,6 @@ local function selectSecondSlot(version)
  slotBusy=false
  if on then status.Text="AUTO FARM ON" end
 end
-
--- ПОИСК ТОЛЬКО СРЕДИ НЕПОСРЕДСТВЕННЫХ ДЕТЕЙ WORKSPACE.MOBS
 
 local function nearest(r)
  local folder=workspace:FindFirstChild("Mobs")
@@ -102,7 +100,6 @@ local function nearest(r)
 
    if h and t and h.Health>0 then
     local d=(r.Position-t.Position).Magnitude
-
     if d<distance then
      best=n
      distance=d
@@ -126,7 +123,6 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
-
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
@@ -141,11 +137,9 @@ local function dungeonComplete()
   if obj:IsA("GuiObject") and not obj.Visible then
    return false
   end
-
   if obj:IsA("ScreenGui") and not obj.Enabled then
    return false
   end
-
   obj=obj.Parent
  end
 
@@ -163,7 +157,7 @@ local function startDungeon()
  status.Text="STARTING DUNGEON"
 
  local ok=pcall(function()
-  return startRemote:InvokeServer()
+  startRemote:InvokeServer()
  end)
 
  if ok then
@@ -172,8 +166,6 @@ local function startDungeon()
   status.Text="START ERROR"
  end
 end
-
--- RETRY КАК В СТАРОМ СКРИПТЕ
 
 local function retryLoop()
  while on do
@@ -184,7 +176,7 @@ local function retryLoop()
    local before=startedCount
 
    local ok=pcall(function()
-    return voteRemote:InvokeServer("Retry")
+    voteRemote:InvokeServer("Retry")
    end)
 
    if ok then
@@ -222,7 +214,6 @@ local function findKey()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="key" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChild("Handle",true)
     or obj:FindFirstChildWhichIsA("BasePart",true)
@@ -242,7 +233,6 @@ local function findDoors()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="keyhole" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
@@ -343,7 +333,6 @@ local function keyDoorLoop()
      keyDone=true
     end
    end
-
   elseif not doorDone then
    if #findDoors()>0 then
     unlockDoors()
@@ -372,7 +361,6 @@ local function startFarm()
   if not root then return end
 
   local folder=workspace:FindFirstChild("Mobs")
-
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
 
@@ -440,3 +428,20 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 startFarm()
+]==]
+
+local queueFn = queue_on_teleport or (syn and syn.queue_on_teleport)
+
+if queueFn then
+ local queuedCode =
+  "local s="..string.format("%q",SCRIPT).."; loadstring(s)()"
+
+ pcall(function()
+  queueFn(queuedCode)
+ end)
+end
+
+local run=loadstring(SCRIPT)
+if run then
+ run()
+end
