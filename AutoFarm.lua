@@ -66,6 +66,16 @@ local function holdE(duration)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 end
 
+local function repeatE(duration)
+ local elapsed=0
+
+ while on and elapsed<duration do
+  press(Enum.KeyCode.E)
+  task.wait(.3)
+  elapsed=elapsed+.42
+ end
+end
+
 local function getRoot()
  local c=me.Character
  return c and c:FindFirstChild("HumanoidRootPart")
@@ -113,8 +123,10 @@ end
 
 local function attack()
  V:SendMouseButtonEvent(0,0,0,true,game,0)
- task.wait(.1)
+ task.wait(.03)
  V:SendMouseButtonEvent(0,0,0,false,game,0)
+
+ press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
  press(Enum.KeyCode.V)
@@ -260,7 +272,7 @@ local function collectKey()
 
  if on then
   status.Text="PICKING KEY"
-  holdE(5)
+  repeatE(5)
   task.wait(2)
  end
 
