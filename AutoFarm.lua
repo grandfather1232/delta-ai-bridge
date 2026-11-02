@@ -66,6 +66,16 @@ local function holdE(duration)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 end
 
+local function repeatE(duration)
+ local elapsed=0
+
+ while on and elapsed<duration do
+  press(Enum.KeyCode.E)
+  task.wait(.3)
+  elapsed=elapsed+.42
+ end
+end
+
 local function getRoot()
  local c=me.Character
  return c and c:FindFirstChild("HumanoidRootPart")
@@ -111,10 +121,9 @@ local function nearest(r)
  return best
 end
 
-local function attack()
- V:SendMouseButtonEvent(0,0,0,true,game,0)
- task.wait(.1)
- V:SendMouseButtonEvent(0,0,0,false,game,0)
+-- Способности: мышь работает отдельно
+local function attackSkills()
+ press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
  press(Enum.KeyCode.V)
@@ -260,7 +269,7 @@ local function collectKey()
 
  if on then
   status.Text="PICKING KEY"
-  press(Enum.KeyCode.E)
+  repeatE(5)
   task.wait(2)
  end
 
@@ -312,11 +321,10 @@ local function unlockDoors()
 
  if on then
   doorDone=true
-  status.Text="HOLDING 2"
+  status.Text="SELECTING SLOT 2"
 
-  V:SendKeyEvent(true,Enum.KeyCode.Two,false,game)
-  task.wait(3)
-  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+  press(Enum.KeyCode.Two)
+  task.wait(1)
  end
 
  interacting=false
@@ -380,13 +388,33 @@ local function startFarm()
   end
  end)
 
+ -- Непрерывные клики мышью в отдельном цикле
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
    and target:IsDescendantOf(folder) then
-    attack()
+
+    V:SendMouseButtonEvent(0,0,0,true,game,0)
+    task.wait(.3)
+    V:SendMouseButtonEvent(0,0,0,false,game,0)
+   end
+
+   task.wait(.3)
+  end
+
+  V:SendMouseButtonEvent(0,0,0,false,game,0)
+ end)
+
+ -- Способности отдельно от кликов мыши
+ task.spawn(function()
+  while on do
+   local folder=workspace:FindFirstChild("Mobs")
+
+   if not interacting and target and folder
+   and target:IsDescendantOf(folder) then
+    attackSkills()
    end
 
    task.wait(1)
@@ -416,6 +444,7 @@ stop.MouseButton1Click:Connect(function()
  keyDone=false
  doorDone=false
 
+ V:SendMouseButtonEvent(0,0,0,false,game,0)
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
@@ -430,7 +459,6 @@ end)
 startFarm()
 ]==]
 
--- Повторная постановка скрипта в очередь
 local BOOT_TEMPLATE = [====[
 local SCRIPT=%s
 local BOOT_TEMPLATE=%s
