@@ -1,36 +1,36 @@
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
+local Core = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 
 pcall(function()
-    local old = CoreGui:FindFirstChild("KeyCompare")
+    local old = Core:FindFirstChild("PromptScan")
     if old then old:Destroy() end
 end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "KeyCompare"
+gui.Name = "PromptScan"
 gui.ResetOnSpawn = false
-gui.Parent = CoreGui
+gui.Parent = Core
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 350, 0, 400)
-frame.Position = UDim2.new(0, 15, 0.2, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+frame.Size = UDim2.fromOffset(360, 390)
+frame.Position = UDim2.new(0, 10, 0.2, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
 
 local label = Instance.new("TextLabel", frame)
-label.Size = UDim2.new(1, -10, 1, -45)
-label.Position = UDim2.fromOffset(5, 5)
+label.Size = UDim2.new(1,-10,1,-45)
+label.Position = UDim2.fromOffset(5,5)
 label.BackgroundTransparency = 1
-label.TextColor3 = Color3.new(1, 1, 1)
+label.TextColor3 = Color3.new(1,1,1)
 label.TextSize = 12
 label.TextWrapped = true
 label.TextXAlignment = Enum.TextXAlignment.Left
 label.TextYAlignment = Enum.TextYAlignment.Top
 
-local refresh = Instance.new("TextButton", frame)
-refresh.Size = UDim2.new(1, -10, 0, 35)
-refresh.Position = UDim2.new(0, 5, 1, -40)
-refresh.Text = "ОБНОВИТЬ"
+local button = Instance.new("TextButton", frame)
+button.Size = UDim2.new(1,-10,0,35)
+button.Position = UDim2.new(0,5,1,-40)
+button.Text = "ОБНОВИТЬ"
 
 local function scan()
     local root = player.Character and
@@ -38,60 +38,50 @@ local function scan()
 
     local results = {}
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name:lower() == "key" then
-            local prompt = obj:FindFirstChildWhichIsA(
-                "ProximityPrompt", true
-            )
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ProximityPrompt") then
+            local parent = p.Parent
+            local part = parent:IsA("BasePart") and parent
+                or parent:FindFirstChildWhichIsA("BasePart", true)
 
-            local part = obj:IsA("BasePart") and obj
-                or obj:FindFirstChildWhichIsA("BasePart", true)
-
-            local distance = "?"
+            local distance = math.huge
             if root and part then
-                distance = string.format(
-                    "%.1f", (root.Position - part.Position).Magnitude
-                )
+                distance = (root.Position - part.Position).Magnitude
             end
 
-            local info = {
-                "ПУТЬ: " .. obj:GetFullName(),
-                "ТИП: " .. obj.ClassName,
-                "ДИСТАНЦИЯ: " .. distance,
-                "ДЕТЕЙ: " .. #obj:GetChildren()
-            }
-
-            if prompt then
-                table.insert(info,
-                    "PROMPT: " .. prompt:GetFullName())
-                table.insert(info,
-                    "ACTION: " .. prompt.ActionText)
-                table.insert(info,
-                    "HOLD: " .. prompt.HoldDuration)
-                table.insert(info,
-                    "DISTANCE: " .. prompt.MaxActivationDistance)
-                table.insert(info,
-                    "ENABLED: " .. tostring(prompt.Enabled))
-            else
-                table.insert(info, "PROMPT: НЕТ")
+            if p.Enabled and p.ActionText:lower() == "interact" then
+                table.insert(results, {
+                    distance = distance,
+                    info = string.format(
+                        "ПУТЬ: %s\nДИСТАНЦИЯ: %.1f\nКНОПКА: %s\nУДЕРЖАНИЕ: %.2f\nLOS: %s\nРОДИТЕЛЬ: %s",
+                        p:GetFullName(),
+                        distance,
+                        p.KeyboardKeyCode.Name,
+                        p.HoldDuration,
+                        tostring(p.RequiresLineOfSight),
+                        parent:GetFullName()
+                    )
+                })
             end
-
-            for _, child in ipairs(obj:GetChildren()) do
-                table.insert(info,
-                    "CHILD: " .. child.Name .. " [" ..
-                    child.ClassName .. "]")
-            end
-
-            table.insert(results, table.concat(info, "\n"))
         end
     end
 
-    label.Text = #results > 0
-        and table.concat(results, "\n\n----------------\n\n")
-        or "Объекты Key не найдены"
+    table.sort(results, function(a,b)
+        return a.distance < b.distance
+    end)
+
+    local output = "НАЙДЕНО: " .. #results .. "\n\n"
+    for i = 1, math.min(12,#results) do
+        output = output .. results[i].info .. "\n\n---\n\n"
+    end
+
+    label.Text = output
 end
 
-refresh.MouseButton1Click:Connect(scan)
+button.MouseButton1Click:Connect(scan)
 scan()
+
+
+
 
 
