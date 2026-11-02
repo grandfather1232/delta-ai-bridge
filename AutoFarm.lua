@@ -23,6 +23,9 @@ local switching=false
 local follow
 local retryBusy=false
 local startedCount=0
+local interacting=false
+local keyDone=false
+local doorDone=false
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -54,6 +57,17 @@ local function press(k)
  V:SendKeyEvent(true,k,false,game)
  task.wait(.12)
  V:SendKeyEvent(false,k,false,game)
+end
+
+local function holdE(duration)
+ V:SendKeyEvent(true,Enum.KeyCode.E,false,game)
+ task.wait(duration)
+ V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+end
+
+local function getRoot()
+ local c=me.Character
+ return c and c:FindFirstChild("HumanoidRootPart")
 end
 
 local function nearest(r)
@@ -114,6 +128,9 @@ end
 
 startedEvent.OnClientEvent:Connect(function()
  startedCount=startedCount+1
+ keyDone=false
+ doorDone=false
+ target=nil
 end)
 
 local function startDungeon()
@@ -148,7 +165,9 @@ local function retryLoop()
      elapsed=elapsed+.5
     end
     if on and startedCount==before then
-     startDungeon()
+
+
+startDungeon()
     end
    else
     status.Text="RETRY ERROR"
@@ -164,6 +183,124 @@ local function retryLoop()
  end
 end
 
+-- Находим второй объект Key, который сработал в тесте
+local function findKey()
+ local keys={}
+
+ for _,obj in ipairs(workspace:GetDescendants()) do
+  if obj.Name:lower()=="key" then
+   local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+   local part=obj:IsA("BasePart") and obj
+    or obj:FindFirstChild("Handle",true)
+    or obj:FindFirstChildWhichIsA("BasePart",true)
+
+   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+    table.insert(keys,{object=obj,prompt=prompt,part=part})
+   end
+  end
+ end
+
+ return keys[2]
+end
+
+local function findDoors()
+ local doors={}
+
+ for _,obj in ipairs(workspace:GetDescendants()) do
+  if obj.Name:lower()=="keyhole" then
+   local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+   local part=obj:IsA("BasePart") and obj
+    or obj:FindFirstChildWhichIsA("BasePart",true)
+
+   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+    table.insert(doors,{prompt=prompt,part=part})
+   end
+  end
+ end
+
+ return doors
+end
+
+-- Отдельный цикл ключа и двери
+local function keyDoorLoop()
+ while on do
+  if not keyDone then
+   local key=findKey()
+
+   if key then
+    interacting=true
+    status.Text="GOING TO KEY"
+
+    local root=getRoot()
+    if root then
+     root.CFrame=key.part.CFrame*CFrame.new(0,2,0)
+     task.wait(1)
+
+     if on then
+      status.Text="PICKING KEY"
+      press(Enum.KeyCode.E)
+      task.wait(2)
+      keyDone=true
+     end
+    end
+
+    interacting=false
+   end
+
+  elseif not doorDone then
+   local doors=findDoors()
+
+   if #doors>0 then
+    interacting=true
+
+    for i,door in ipairs(doors) do
+     if not on then break end
+
+     local root=getRoot()
+     if not root then break end
+
+     status.Text="GOING TO DOOR "..i
+     root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
+     root.AssemblyLinearVelocity=Vector3.zero
+
+     local attachment=Instance.new("Attachment")
+     attachment.Parent=root
+
+     local velocity=Instance.new("LinearVelocity")
+     velocity.Attachment0=attachment
+     velocity.MaxForce=math.huge
+     velocity.VectorVelocity=Vector3.zero
+     velocity.Parent=root
+
+     task.wait(3)
+
+     if on then
+      status.Text="UNLOCKING DOOR "..i
+      for attempt=1,3 do
+       if not on then break end
+       holdE(1.5)
+       task.wait(1)
+      end
+     end
+
+     velocity:Destroy()
+     attachment:Destroy()
+     task.wait(2)
+    end
+
+    if on then
+     doorDone=true
+     status.Text="DOOR INTERACTED"
+    end
+
+    interacting=false
+   end
+  end
+
+  task.wait(1)
+ end
+end
+
 local function startFarm()
  if on then return end
  on=true
@@ -172,16 +309,15 @@ local function startFarm()
  task.spawn(function()
   press(Enum.KeyCode.Two)
   task.wait(.3)
-  local c=me.
-
-
-Character
+  local c=me.Character
   secondTool=c and c:FindFirstChildOfClass("Tool")
  end)
 
  task.spawn(startDungeon)
 
  follow=R.Heartbeat:Connect(function()
+  if interacting then return end
+
   local c=me.Character
   local r=c and c:FindFirstChild("HumanoidRootPart")
   if not r then return end
@@ -217,7 +353,7 @@ Character
 
  task.spawn(function()
   while on do
-   if target and target.Parent then
+   if not interacting and target and target.Parent then
     attack()
    end
    task.wait(1)
@@ -225,19 +361,23 @@ Character
  end)
 
  task.spawn(retryLoop)
+ task.spawn(keyDoorLoop)
 end
 
 stop.MouseButton1Click:Connect(function()
  on=false
+ interacting=false
  target=nil
  secondTool=nil
  retryBusy=false
+ keyDone=false
+ doorDone=false
  status.Text="AUTO FARM OFF"
+
  if follow then
   follow:Disconnect()
   follow=nil
  end
 end)
 
--- Автоматический запуск при выполнении скрипта
 startFarm()
