@@ -124,9 +124,13 @@ end
 
 -- Способности: мышь работает отдельно
 local function attackSkills()
+ task.wait(.4)
  press(Enum.KeyCode.F)
+ task.wait(.4)
  press(Enum.KeyCode.F)
+ task.wait(.4)
  press(Enum.KeyCode.C)
+ task.wait(.4)
  press(Enum.KeyCode.V)
 end
 
