@@ -12,7 +12,6 @@ local startRemote=services.DungeonService.RF.StartDungeon
 local voteRemote=services.PartyService.RF.VoteOn
 local startedEvent=services.DungeonService.RE.DungeonStarted
 
--- Защита от дублей: останавливаем предыдущую копию скрипта, затем убираем её GUI
 local env=(getgenv and getgenv()) or _G
 
 pcall(function()
@@ -89,7 +88,6 @@ local function getRoot()
  return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- Экранные координаты цели (для наведения курсора); без цели — центр экрана
 local function aimXY()
  local cam=workspace.CurrentCamera
  local t=target and target:FindFirstChild("HumanoidRootPart")
@@ -144,15 +142,10 @@ local function nearest(r)
  return best
 end
 
--- Способности: мышь работает отдельно
+-- F, C и V по одному разу
 local function attackSkills()
- task.wait(.4)
  press(Enum.KeyCode.F)
- task.wait(.4)
- press(Enum.KeyCode.F)
- task.wait(.4)
  press(Enum.KeyCode.C)
- task.wait(.4)
  press(Enum.KeyCode.V)
 end
 
@@ -400,21 +393,18 @@ local function startFarm()
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
 
-  -- цель остаётся, пока моб в папке и не умер
   local inFolder=folder and target
    and target:IsA("Model")
    and target:IsDescendantOf(folder)
   local dead=h and h.Health<=0
 
   if inFolder and not dead and (not h or not t) then
-   -- моб жив, но Humanoid/HRP на миг пропал: ждём до 0.5 сек
    if lostAt==0 then lostAt=os.clock() end
    if os.clock()-lostAt<0.5 then return end
   else
    lostAt=0
   end
 
-  -- цель умерла/исчезла: следующую выбираем сразу
   if not inFolder or dead or not h or not t then
    target=nearest(root)
    t=target and target:FindFirstChild("HumanoidRootPart")
@@ -429,7 +419,7 @@ local function startFarm()
   end
  end)
 
- -- Непрерывные клики мышью в отдельном цикле
+ -- Один клик мышью в секунду
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
@@ -439,19 +429,21 @@ local function startFarm()
 
     local x,y=aimXY()
     V:SendMouseButtonEvent(x,y,0,true,game,0)
-    task.wait(.3)
+    task.wait(.1)
+
     x,y=aimXY()
     V:SendMouseButtonEvent(x,y,0,false,game,0)
-   end
 
-   task.wait(.3)
+    task.wait(.9)
+   else
+    task.wait(.1)
+   end
   end
 
   local x,y=aimXY()
   V:SendMouseButtonEvent(x,y,0,false,game,0)
  end)
 
- -- Камера смотрит на цель (после обновления стандартной камеры)
  pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
  R:BindToRenderStep("AutoFarmAim",Enum.RenderPriority.Camera.Value+1,function()
   if not on or interacting then return end
@@ -464,7 +456,6 @@ local function startFarm()
   end
  end)
 
- -- Курсор постоянно на цели, чтобы способности летели по мобу
  task.spawn(function()
   while on do
    if not interacting and target then
@@ -520,7 +511,6 @@ local function stopFarm()
   follow=nil
  end
 
- -- отключаем события, чтобы старая копия не оставляла за собой обработчики
  if connStarted then
   connStarted:Disconnect()
   connStarted=nil
@@ -545,7 +535,6 @@ end
 
 stop.MouseButton1Click:Connect(stopFarm)
 
--- Регистрируем остановку этой копии, чтобы следующий запуск мог её выключить
 env.AutoFarmStop=stopFarm
 
 startFarm()
@@ -558,7 +547,6 @@ local BOOT_TEMPLATE=%s
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
 local env=(getgenv and getgenv()) or _G
 
--- В очередь ставим только одну копию на сервер, чтобы после перехода не запускалось два экземпляра
 if queueFn and env.AutoFarmQueuedJob~=game.JobId then
  env.AutoFarmQueuedJob=game.JobId
 
