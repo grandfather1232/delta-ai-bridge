@@ -12,6 +12,13 @@ local startRemote=services.DungeonService.RF.StartDungeon
 local voteRemote=services.PartyService.RF.VoteOn
 local startedEvent=services.DungeonService.RE.DungeonStarted
 
+-- Защита от дублей: останавливаем предыдущую копию скрипта, затем убираем её GUI
+local env=(getgenv and getgenv()) or _G
+
+pcall(function()
+ if env.AutoFarmStop then env.AutoFarmStop() end
+end)
+
 pcall(function()
  local old=Core:FindFirstChild("AutoFarm")
  if old then old:Destroy() end
@@ -175,7 +182,7 @@ local function dungeonComplete()
  return true
 end
 
-startedEvent.OnClientEvent:Connect(function()
+local connStarted=startedEvent.OnClientEvent:Connect(function()
  startedCount=startedCount+1
  keyDone=false
  doorDone=false
@@ -487,7 +494,7 @@ local function startFarm()
  task.spawn(keyDoorLoop)
 end
 
-me.CharacterAdded:Connect(function()
+local connChar=me.CharacterAdded:Connect(function()
  characterVersion=characterVersion+1
  target=nil
  lostAt=0
@@ -499,7 +506,7 @@ me.CharacterAdded:Connect(function()
  end
 end)
 
-stop.MouseButton1Click:Connect(function()
+local function stopFarm()
  on=false
  interacting=false
  target=nil
@@ -508,20 +515,38 @@ stop.MouseButton1Click:Connect(function()
  doorDone=false
  lostAt=0
 
- pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
-
- local sx,sy=aimXY()
- V:SendMouseButtonEvent(sx,sy,0,false,game,0)
- V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
- V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
-
- status.Text="AUTO FARM OFF"
-
  if follow then
   follow:Disconnect()
   follow=nil
  end
-end)
+
+ -- отключаем события, чтобы старая копия не оставляла за собой обработчики
+ if connStarted then
+  connStarted:Disconnect()
+  connStarted=nil
+ end
+
+ if connChar then
+  connChar:Disconnect()
+  connChar=nil
+ end
+
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+
+ pcall(function()
+  local sx,sy=aimXY()
+  V:SendMouseButtonEvent(sx,sy,0,false,game,0)
+  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+ end)
+
+ status.Text="AUTO FARM OFF"
+end
+
+stop.MouseButton1Click:Connect(stopFarm)
+
+-- Регистрируем остановку этой копии, чтобы следующий запуск мог её выключить
+env.AutoFarmStop=stopFarm
 
 startFarm()
 ]==]
@@ -531,8 +556,12 @@ local SCRIPT=%s
 local BOOT_TEMPLATE=%s
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
+local env=(getgenv and getgenv()) or _G
 
-if queueFn then
+-- В очередь ставим только одну копию на сервер, чтобы после перехода не запускалось два экземпляра
+if queueFn and env.AutoFarmQueuedJob~=game.JobId then
+ env.AutoFarmQueuedJob=game.JobId
+
  local queuedCode=string.format(
   BOOT_TEMPLATE,
   string.format("%%q",SCRIPT),
