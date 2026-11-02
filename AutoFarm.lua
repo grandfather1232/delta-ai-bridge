@@ -260,7 +260,7 @@ local function collectKey()
 
  if on then
   status.Text="PICKING KEY"
-  press(Enum.KeyCode.E)
+  holdE(5)
   task.wait(2)
  end
 
@@ -430,7 +430,6 @@ end)
 startFarm()
 ]==]
 
--- Повторная постановка скрипта в очередь
 local BOOT_TEMPLATE = [====[
 local SCRIPT=%s
 local BOOT_TEMPLATE=%s
