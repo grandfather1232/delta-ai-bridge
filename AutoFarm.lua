@@ -27,6 +27,10 @@ local doorDone=false
 local slotBusy=false
 local characterVersion=0
 
+-- Новые списки проверки NPC
+local ignored={}
+local checking={}
+
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
 g.ResetOnSpawn=false
@@ -70,6 +74,11 @@ local function getRoot()
  return c and c:FindFirstChild("HumanoidRootPart")
 end
 
+local function getHumanoid()
+ local c=me.Character
+ return c and c:FindFirstChildOfClass("Humanoid")
+end
+
 local function selectSecondSlot(version)
  if slotBusy or not on then return end
  slotBusy=true
@@ -92,7 +101,10 @@ local function nearest(r)
 
  for _,n in ipairs(workspace:GetDescendants()) do
   if n:IsA("Model") and n~=me.Character
-  and not P:GetPlayerFromCharacter(n) then
+  and not P:GetPlayerFromCharacter(n)
+  and not ignored[n]
+  and not checking[n] then
+
    local h=n:FindFirstChildOfClass("Humanoid")
    local t=n:FindFirstChild("HumanoidRootPart")
 
@@ -107,6 +119,59 @@ local function nearest(r)
  end
 
  return best
+end
+
+-- Проверка: движение NPC, его урон и урон игроку
+local function checkTarget(npc)
+ if checking[npc] or ignored[npc] then return end
+
+ local npcHum=npc:FindFirstChildOfClass("Humanoid")
+ local npcRoot=npc:FindFirstChild("HumanoidRootPart")
+ local playerHum=getHumanoid()
+
+ if not npcHum or not npcRoot or not playerHum then return end
+
+ checking[npc]=true
+
+ local startPosition=npcRoot.Position
+ local startNpcHealth=npcHum.Health
+ local startPlayerHealth=playerHum.Health
+
+ status.Text="CHECKING ENEMY"
+
+ task.wait(1.5)
+
+ if not on then
+  checking[npc]=nil
+  return
+ end
+
+ if not npc.Parent or not npcHum.Parent or not npcRoot.Parent then
+  checking[npc]=nil
+  return
+ end
+
+ local moved=(npcRoot.Position-startPosition).Magnitude>1.5
+ local npcDamaged=npcHum.Health<startNpcHealth
+ local playerDamaged=playerHum.Health<startPlayerHealth
+
+ -- Игнорируем только если все три признака отсутствуют
+ if not moved and not npcDamaged and not playerDamaged then
+  ignored[npc]=true
+
+  if target==npc then
+   target=nil
+  end
+ else
+  -- Хотя бы один признак обнаружен: продолжаем атаку
+  ignored[npc]=nil
+ end
+
+ checking[npc]=nil
+
+ if on then
+  status.Text="AUTO FARM ON"
+ end
 end
 
 local function attack()
@@ -149,6 +214,8 @@ startedEvent.OnClientEvent:Connect(function()
  keyDone=false
  doorDone=false
  target=nil
+ ignored={}
+ checking={}
 end)
 
 local function startDungeon()
@@ -180,10 +247,7 @@ local function retryLoop()
    if ok then
     local elapsed=0
 
-    while on and elapsed<
-
-
-10 do
+    while on and elapsed<10 do
      if startedCount>before then break end
      task.wait(.5)
      elapsed=elapsed+.5
@@ -364,6 +428,14 @@ local function startFarm()
 
   if not h or not t or h.Health<=0 then
    target=nearest(root)
+
+   if target then
+    local candidate=target
+    task.spawn(function()
+     checkTarget(candidate)
+    end)
+   end
+
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
 
@@ -391,8 +463,8 @@ end
 me.CharacterAdded:Connect(function()
  characterVersion=characterVersion+1
  target=nil
-  
-  if on then
+
+ if on then
   task.spawn(function()
    selectSecondSlot(characterVersion)
   end)
@@ -406,6 +478,8 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
+ ignored={}
+ checking={}
 
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
