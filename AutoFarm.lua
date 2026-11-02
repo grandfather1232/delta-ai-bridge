@@ -35,6 +35,8 @@ local doorDone=false
 local slotBusy=false
 local characterVersion=0
 local lostAt=0
+local lastTeleportTime=0
+local teleportCooldown=0.5 -- Задержка между телепортациями (секунды)
 
 -- ====== GUI ======
 local g=Instance.new("ScreenGui")
@@ -91,13 +93,22 @@ local c=me.Character
 return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- Плавная телепортация к позиции
+-- Плавная телепортация к позиции (с задержкой)
 local function smoothTeleport(root, targetPos, speed)
 if not root or not targetPos then return end
 
+-- Проверяем кулдаун телепортации
+local now=os.clock()
+if now-lastTeleportTime < teleportCooldown then
+task.wait(teleportCooldown - (now-lastTeleportTime))
+end
+lastTeleportTime=os.clock()
+
 local startPos = root.Position
 local distance = (targetPos - startPos).Magnitude
-local steps = math.max(1, math.floor(distance / 5))
+
+-- Уменьшаем количество шагов
+local steps = math.max(1, math.floor(distance / 10))
 
 for i = 1, steps do
 if not on then break end
@@ -108,11 +119,12 @@ local newPos = startPos:Lerp(targetPos, alpha)
 root.CFrame = CFrame.new(newPos)
 root.AssemblyLinearVelocity = Vector3.zero
 
-task.wait(0.02)
+task.wait(0.05) -- Увеличили задержку между шагами
 end
 
 root.CFrame = CFrame.new(targetPos)
 root.AssemblyLinearVelocity = Vector3.zero
+lastTeleportTime=os.clock()
 end
 
 -- Плавная телепортация к цели с поворотом
@@ -269,14 +281,20 @@ if ok then
 status.Text="WAITING..."
 local elapsed=0
 
-while on and elapsed<10 do  
- if startedCount>before then break end  
- task.wait(.5)  
- elapsed=elapsed+.5  
-end  
+while on and elapsed<10 do
 
-if on and startedCount==before then  
- startDungeon()  
+if startedCount>before then break end
+
+task.wait(.5)
+
+elapsed=elapsed+.5
+
+end
+
+if on and startedCount==before then
+
+startDungeon()
+
 end
 
 else
@@ -459,7 +477,11 @@ lostAt=0
 end
 
 if t then
+-- Проверяем дистанцию перед телепортацией
+local distance=(root.Position-t.Position).Magnitude
+if distance > 15 then -- Телепортируемся только если далеко
 smoothTeleportToTarget(root, t)
+end
 end
 end)
 
@@ -471,16 +493,19 @@ local folder=workspace:FindFirstChild("Mobs")
 if not interacting and target and folder
 and target:IsDescendantOf(folder) then
 
-local x,y=aimXY()  
-V:SendMouseButtonEvent(x,y,0,true,game,0)  
-task.wait(0.4)          -- удержание ЛКМ
-x,y=aimXY()  
+local x,y=aimXY()
+
+V:SendMouseButtonEvent(x,y,0,true,game,0)
+
+task.wait(0.4) -- удержание ЛКМ
+x,y=aimXY()
+
 V:SendMouseButtonEvent(x,y,0,false,game,0)
-task.wait(0.4)          -- пауза после отпускания
+task.wait(0.4) -- пауза после отпускания
 
 end
 
-task.wait(0.2)          -- доп. пауза
+task.wait(0.2) -- доп. пауза
 end
 
 local x,y=aimXY()
@@ -522,7 +547,7 @@ and target:IsDescendantOf(folder) then
 attackSkills()
 end
 
-task.wait(1.5)          -- пауза между циклами способностей
+task.wait(1.5) -- пауза между циклами способностей
 end
 end)
 
