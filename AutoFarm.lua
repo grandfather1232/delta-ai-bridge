@@ -9,7 +9,10 @@ local pg = player:WaitForChild("PlayerGui")
 
 local services = RS.ReplicatedStorage.Packages.Knit.Services
 local startRemote = services.DungeonService.RF.StartDungeon
-local voteRemote = services.PartyService.RF.VoteOn
+
+local partyService = services:FindFirstChild("PartyService")
+local voteRemote = partyService and partyService:FindFirstChild("VoteOn", true)
+
 local startedEvent = services.DungeonService.RE.DungeonStarted
 
 pcall(function()
@@ -27,7 +30,6 @@ local startedCount = 0
 local slotBusy = false
 local characterVersion = 0
 
--- GUI
 local gui = Instance.new("ScreenGui")
 gui.Name = "AutoFarm"
 gui.ResetOnSpawn = false
@@ -81,7 +83,6 @@ local function getRoot()
     return character and character:FindFirstChild("HumanoidRootPart")
 end
 
--- ВЫБОР ВТОРОГО СЛОТА
 local function selectSecondSlot(version)
     if slotBusy or not running then return end
     slotBusy = true
@@ -121,9 +122,7 @@ local function findNearest()
     local folder = workspace:FindFirstChild("Mobs")
     local root = getRoot()
 
-    if not folder or not root then
-        return nil
-    end
+    if not folder or not root then return nil end
 
     local nearest = nil
     local shortest = math.huge
@@ -191,7 +190,6 @@ local function autoAttackLoop()
     end
 end
 
--- ПРОВЕРКА ЗАВЕРШЕНИЯ ПОДЗЕМЕЛЬЯ
 local function dungeonComplete()
     local screen = pg:FindFirstChild("DungeonComplete")
 
@@ -231,7 +229,6 @@ startedEvent.OnClientEvent:Connect(function()
     target = nil
 end)
 
--- ЗАПУСК ПОДЗЕМЕЛЬЯ
 local function startDungeon()
     setStatus("STARTING DUNGEON")
 
@@ -246,7 +243,7 @@ local function startDungeon()
     end
 end
 
--- АВТОМАТИЧЕСКИЙ RETRY
+-- RETRY
 local function retryLoop()
     while running do
         if dungeonComplete() and not retryBusy then
@@ -254,17 +251,19 @@ local function retryLoop()
             setStatus("RETRYING...")
 
             local before = startedCount
+            local ok = false
 
-            local ok = pcall(function()
-                voteRemote:InvokeServer("Retry")
-            end)
+            if voteRemote and voteRemote:IsA("RemoteFunction") then
+                ok = pcall(function()
+                    voteRemote:InvokeServer("Retry")
+                end)
+            end
 
             if ok then
                 local elapsed = 0
 
                 while running and elapsed < 10 do
                     if startedCount > before then break end
-
                     task.wait(0.5)
                     elapsed = elapsed + 0.5
                 end
@@ -293,8 +292,7 @@ local function findKey()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj.Name:lower() == "key" then
             local prompt = obj:FindFirstChildWhichIsA(
-                "ProximityPrompt",
-                true
+                "ProximityPrompt", true
             )
 
             local part = obj:IsA("BasePart") and obj
@@ -320,8 +318,7 @@ local function findDoors()
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj.Name:lower() == "keyhole" then
             local prompt = obj:FindFirstChildWhichIsA(
-                "ProximityPrompt",
-                true
+                "ProximityPrompt", true
             )
 
             local part = obj:IsA("BasePart") and obj
@@ -339,7 +336,6 @@ local function findDoors()
     return doors
 end
 
--- ПОДБОР КЛЮЧА
 local function collectKey()
     local key = findKey()
     if not key then return false end
@@ -363,7 +359,6 @@ local function collectKey()
     return running
 end
 
--- ОТКРЫТИЕ ДВЕРЕЙ
 local function unlockDoors()
     local doors = findDoors()
     if #doors == 0 then return false end
@@ -397,7 +392,6 @@ local function unlockDoors()
 
             for attempt = 1, 3 do
                 if not running then break end
-
                 holdE(1.5)
                 task.wait(1)
             end
@@ -422,7 +416,6 @@ local function unlockDoors()
     return running
 end
 
--- ЦИКЛ КЛЮЧЕЙ И ДВЕРЕЙ
 local function keyDoorLoop()
     while running do
         if not keyDone then
@@ -442,7 +435,6 @@ local function keyDoorLoop()
     end
 end
 
--- ЗАПУСК ВСЕХ СИСТЕМ
 local function startFarm()
     if running then return end
 
@@ -453,7 +445,7 @@ local function startFarm()
     doorDone = false
     retryBusy = false
 
-    setStatus("AUTO FARM: ON")
+    label.Text = "AUTO FARM: ON"
 
     task.spawn(function()
         selectSecondSlot(characterVersion)
@@ -465,7 +457,6 @@ local function startFarm()
     task.spawn(keyDoorLoop)
 end
 
--- ПОВТОРНЫЙ ВЫБОР СЛОТА ПОСЛЕ ВОЗРОЖДЕНИЯ
 player.CharacterAdded:Connect(function()
     characterVersion = characterVersion + 1
     target = nil
@@ -477,7 +468,6 @@ player.CharacterAdded:Connect(function()
     end
 end)
 
--- ОСТАНОВКА
 stop.MouseButton1Click:Connect(function()
     running = false
     interacting = false
