@@ -1,87 +1,81 @@
 local Players = game:GetService("Players")
+local VIM = game:GetService("VirtualInputManager")
 local Core = game:GetService("CoreGui")
+
 local player = Players.LocalPlayer
 
 pcall(function()
-    local old = Core:FindFirstChild("PromptScan")
+    local old = Core:FindFirstChild("KeyTest")
     if old then old:Destroy() end
 end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "PromptScan"
+gui.Name = "KeyTest"
 gui.ResetOnSpawn = false
 gui.Parent = Core
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.fromOffset(360, 390)
-frame.Position = UDim2.new(0, 10, 0.2, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
-
-local label = Instance.new("TextLabel", frame)
-label.Size = UDim2.new(1,-10,1,-45)
-label.Position = UDim2.fromOffset(5,5)
-label.BackgroundTransparency = 1
+local label = Instance.new("TextLabel", gui)
+label.Size = UDim2.fromOffset(320, 100)
+label.Position = UDim2.new(0.5, -160, 0.3, 0)
+label.BackgroundColor3 = Color3.fromRGB(25,25,35)
 label.TextColor3 = Color3.new(1,1,1)
-label.TextSize = 12
+label.TextSize = 16
 label.TextWrapped = true
-label.TextXAlignment = Enum.TextXAlignment.Left
-label.TextYAlignment = Enum.TextYAlignment.Top
 
-local button = Instance.new("TextButton", frame)
-button.Size = UDim2.new(1,-10,0,35)
-button.Position = UDim2.new(0,5,1,-40)
-button.Text = "ОБНОВИТЬ"
+local function findKey()
+    local map = workspace:FindFirstChild("map")
+    local dungeon = map and map:FindFirstChild("halloweendungeon")
+    local dungeonMap = dungeon and dungeon:FindFirstChild("map")
+    if not dungeonMap then return end
 
-local function scan()
-    local root = player.Character and
-        player.Character:FindFirstChild("HumanoidRootPart")
+    for _, obj in ipairs(dungeonMap:GetDescendants()) do
+        if obj.Name:lower() == "key" then
+            local prompt = obj:FindFirstChildWhichIsA(
+                "ProximityPrompt", true
+            )
 
-    local results = {}
-
-    for _, p in ipairs(workspace:GetDescendants()) do
-        if p:IsA("ProximityPrompt") then
-            local parent = p.Parent
-            local part = parent:IsA("BasePart") and parent
-                or parent:FindFirstChildWhichIsA("BasePart", true)
-
-            local distance = math.huge
-            if root and part then
-                distance = (root.Position - part.Position).Magnitude
-            end
-
-            if p.Enabled and p.ActionText:lower() == "interact" then
-                table.insert(results, {
-                    distance = distance,
-                    info = string.format(
-                        "ПУТЬ: %s\nДИСТАНЦИЯ: %.1f\nКНОПКА: %s\nУДЕРЖАНИЕ: %.2f\nLOS: %s\nРОДИТЕЛЬ: %s",
-                        p:GetFullName(),
-                        distance,
-                        p.KeyboardKeyCode.Name,
-                        p.HoldDuration,
-                        tostring(p.RequiresLineOfSight),
-                        parent:GetFullName()
-                    )
-                })
+            if prompt and prompt.Enabled
+            and prompt.KeyboardKeyCode == Enum.KeyCode.E then
+                local part = obj:FindFirstChild("Handle", true)
+                if part and part:IsA("BasePart") then
+                    return obj, prompt, part
+                end
             end
         end
     end
-
-    table.sort(results, function(a,b)
-        return a.distance < b.distance
-    end)
-
-    local output = "НАЙДЕНО: " .. #results .. "\n\n"
-    for i = 1, math.min(12,#results) do
-        output = output .. results[i].info .. "\n\n---\n\n"
-    end
-
-    label.Text = output
 end
 
-button.MouseButton1Click:Connect(scan)
-scan()
+local key, prompt, part = findKey()
 
+if not key then
+    label.Text = "Ключ с кнопкой E не найден"
+    return
+end
 
+label.Text = "Найден:\n" .. key:GetFullName()
 
+local character = player.Character
+local root = character and character:FindFirstChild("HumanoidRootPart")
 
+if not root then
+    label.Text = "Персонаж не найден"
+    return
+end
 
+root.CFrame = CFrame.new(
+    part.Position + Vector3.new(0, 3, 0)
+)
+
+task.wait(1)
+
+VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+task.wait(0.3)
+VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+
+task.wait(1)
+
+if not key:IsDescendantOf(workspace) then
+    label.Text = "КЛЮЧ ПОДОБРАН!"
+else
+    label.Text = "Ключ остался.\nПуть: " .. key:GetFullName()
+end
