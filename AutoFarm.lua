@@ -183,7 +183,6 @@ startDungeon()
  end
 end
 
--- Находим второй объект Key, который сработал в тесте
 local function findKey()
  local keys={}
 
@@ -221,7 +220,6 @@ local function findDoors()
  return doors
 end
 
--- Отдельный цикл ключа и двери
 local function keyDoorLoop()
  while on do
   if not keyDone then
@@ -290,7 +288,13 @@ local function keyDoorLoop()
 
     if on then
      doorDone=true
-     status.Text="DOOR INTERACTED"
+
+     status.Text="HOLDING 2"
+     V:SendKeyEvent(true,Enum.KeyCode.Two,false,game)
+     task.wait(3)
+     V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+
+     status.Text="AUTO FARM ON"
     end
 
     interacting=false
@@ -354,7 +358,7 @@ local function startFarm()
  task.spawn(function()
   while on do
    if not interacting and target and target.Parent then
-    attack()
+     attack()
    end
    task.wait(1)
   end
@@ -372,6 +376,8 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
+ V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+ V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
  status.Text="AUTO FARM OFF"
 
  if follow then
@@ -381,3 +387,6 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 startFarm()
+
+
+
