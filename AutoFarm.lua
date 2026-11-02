@@ -86,13 +86,13 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
--- Поиск только внутри Workspace.Mobs
+-- Поиск ближайшего живого NPC только в Workspace.Mobs
 local function nearest(r)
  local mobs=workspace:FindFirstChild("Mobs")
  if not mobs then return nil end
 
  local best=nil
- local distance=math.huge
+ local minDistance=math.huge
 
  for _,npc in ipairs(mobs:GetDescendants()) do
   if npc:IsA("Model") then
@@ -102,8 +102,8 @@ local function nearest(r)
    if h and t and h.Health>0 then
     local d=(r.Position-t.Position).Magnitude
 
-    if d<distance then
-     distance=d
+    if d<minDistance then
+     minDistance=d
      best=npc
     end
    end
@@ -364,7 +364,7 @@ local function startFarm()
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
 
-  if not h or not t or h.Health<=0 or not target:IsDescendantOf(workspace:FindFirstChild("Mobs") or workspace) then
+  if not h or not t or h.Health<=0 then
    target=nearest(root)
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
