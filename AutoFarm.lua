@@ -36,7 +36,8 @@ local slotBusy=false
 local characterVersion=0
 local lostAt=0
 local lastTeleportTime=0
-local teleportCooldown=0.5 -- Задержка между телепортациями (секунды)
+local teleportCooldown=2.0 -- Увеличили кулдаун до 2 секунд
+local lastTeleportPos=nil
 
 -- ====== GUI ======
 local g=Instance.new("ScreenGui")
@@ -102,13 +103,20 @@ local now=os.clock()
 if now-lastTeleportTime < teleportCooldown then
 task.wait(teleportCooldown - (now-lastTeleportTime))
 end
+
+-- Проверяем, нужно ли вообще телепортироваться
+if lastTeleportPos and (root.Position - targetPos).Magnitude < 20 then
+return
+end
+
 lastTeleportTime=os.clock()
+lastTeleportPos=targetPos
 
 local startPos = root.Position
 local distance = (targetPos - startPos).Magnitude
 
--- Уменьшаем количество шагов
-local steps = math.max(1, math.floor(distance / 10))
+-- Уменьшаем количество шагов еще больше
+local steps = math.max(1, math.floor(distance / 20))
 
 for i = 1, steps do
 if not on then break end
@@ -119,7 +127,7 @@ local newPos = startPos:Lerp(targetPos, alpha)
 root.CFrame = CFrame.new(newPos)
 root.AssemblyLinearVelocity = Vector3.zero
 
-task.wait(0.05) -- Увеличили задержку между шагами
+task.wait(0.1) -- Еще больше задержка между шагами
 end
 
 root.CFrame = CFrame.new(targetPos)
@@ -249,6 +257,7 @@ keyDone=false
 doorDone=false
 target=nil
 lostAt=0
+lastTeleportPos=nil
 end)
 
 local function startDungeon()
@@ -477,9 +486,9 @@ lostAt=0
 end
 
 if t then
--- Проверяем дистанцию перед телепортацией
+-- Проверяем дистанцию перед телепортацией (увеличили порог)
 local distance=(root.Position-t.Position).Magnitude
-if distance > 15 then -- Телепортируемся только если далеко
+if distance > 30 then -- Телепортируемся только если очень далеко
 smoothTeleportToTarget(root, t)
 end
 end
@@ -559,6 +568,7 @@ local connChar=me.CharacterAdded:Connect(function()
 characterVersion=characterVersion+1
 target=nil
 lostAt=0
+lastTeleportPos=nil
 
 if on then
 task.spawn(function()
@@ -575,6 +585,7 @@ retryBusy=false
 keyDone=false
 doorDone=false
 lostAt=0
+lastTeleportPos=nil
 
 if follow then
 follow:Disconnect()
