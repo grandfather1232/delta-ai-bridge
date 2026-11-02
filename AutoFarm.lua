@@ -82,6 +82,21 @@ local function getRoot()
  return c and c:FindFirstChild("HumanoidRootPart")
 end
 
+-- Экранные координаты цели (для наведения курсора); без цели — центр экрана
+local function aimXY()
+ local cam=workspace.CurrentCamera
+ local t=target and target:FindFirstChild("HumanoidRootPart")
+
+ if cam and t then
+  local p=cam:WorldToScreenPoint(t.Position)
+  return p.X,p.Y
+ end
+
+ local s=cam and cam.ViewportSize
+ if s then return s.X/2,s.Y/2 end
+ return 0,0
+end
+
 local function selectSecondSlot(version)
  if slotBusy or not on then return end
  slotBusy=true
@@ -415,15 +430,43 @@ local function startFarm()
    if not interacting and target and folder
    and target:IsDescendantOf(folder) then
 
-    V:SendMouseButtonEvent(0,0,0,true,game,0)
+    local x,y=aimXY()
+    V:SendMouseButtonEvent(x,y,0,true,game,0)
     task.wait(.3)
-    V:SendMouseButtonEvent(0,0,0,false,game,0)
+    x,y=aimXY()
+    V:SendMouseButtonEvent(x,y,0,false,game,0)
    end
 
    task.wait(.3)
   end
 
-  V:SendMouseButtonEvent(0,0,0,false,game,0)
+  local x,y=aimXY()
+  V:SendMouseButtonEvent(x,y,0,false,game,0)
+ end)
+
+ -- Камера смотрит на цель (после обновления стандартной камеры)
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+ R:BindToRenderStep("AutoFarmAim",Enum.RenderPriority.Camera.Value+1,function()
+  if not on or interacting then return end
+
+  local cam=workspace.CurrentCamera
+  local t=target and target:FindFirstChild("HumanoidRootPart")
+
+  if cam and t then
+   cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
+  end
+ end)
+
+ -- Курсор постоянно на цели, чтобы способности летели по мобу
+ task.spawn(function()
+  while on do
+   if not interacting and target then
+    local x,y=aimXY()
+    V:SendMouseMoveEvent(x,y,game)
+   end
+
+   task.wait(.05)
+  end
  end)
 
  -- Способности отдельно от кликов мыши
@@ -465,7 +508,10 @@ stop.MouseButton1Click:Connect(function()
  doorDone=false
  lostAt=0
 
- V:SendMouseButtonEvent(0,0,0,false,game,0)
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+
+ local sx,sy=aimXY()
+ V:SendMouseButtonEvent(sx,sy,0,false,game,0)
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
