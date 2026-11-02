@@ -19,13 +19,13 @@ end)
 local on=false
 local target
 local secondTool
-local switching=false
 local follow
 local retryBusy=false
 local startedCount=0
 local interacting=false
 local keyDone=false
 local doorDone=false
+local selecting=false
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -68,6 +68,30 @@ end
 local function getRoot()
  local c=me.Character
  return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function selectSecondSlot()
+ if selecting or not on then return end
+ selecting=true
+ secondTool=nil
+
+ local c=me.Character or me.CharacterAdded:Wait()
+ local backpack=me:WaitForChild("Backpack")
+
+ task.wait(1.5)
+
+ if on and me.Character==c then
+  status.Text="SELECTING SLOT 2"
+  press(Enum.KeyCode.Two)
+  task.wait(.7)
+
+  if me.Character==c then
+   secondTool=c:FindFirstChildOfClass("Tool")
+  end
+ end
+
+ selecting=false
+ if on then status.Text="AUTO FARM ON" end
 end
 
 local function nearest(r)
@@ -145,7 +169,10 @@ local function startDungeon()
  end
 end
 
-local function retryLoop()
+l
+
+
+ocal function retryLoop()
  while on do
   if dungeonComplete() and not retryBusy then
    retryBusy=true
@@ -165,9 +192,7 @@ local function retryLoop()
      elapsed=elapsed+.5
     end
     if on and startedCount==before then
-
-
-startDungeon()
+     startDungeon()
     end
    else
     status.Text="RETRY ERROR"
@@ -185,7 +210,6 @@ end
 
 local function findKey()
  local keys={}
-
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="key" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
@@ -198,13 +222,11 @@ local function findKey()
    end
   end
  end
-
  return keys[2]
 end
 
 local function findDoors()
  local doors={}
-
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="keyhole" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
@@ -216,7 +238,6 @@ local function findDoors()
    end
   end
  end
-
  return doors
 end
 
@@ -243,7 +264,6 @@ local function keyDoorLoop()
     end
 
     interacting=false
-   end
 
   elseif not doorDone then
    local doors=findDoors()
@@ -288,12 +308,10 @@ local function keyDoorLoop()
 
     if on then
      doorDone=true
-
      status.Text="HOLDING 2"
      V:SendKeyEvent(true,Enum.KeyCode.Two,false,game)
      task.wait(3)
      V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
-
      status.Text="AUTO FARM ON"
     end
 
@@ -310,14 +328,7 @@ local function startFarm()
  on=true
  status.Text="AUTO FARM ON"
 
- task.spawn(function()
-  press(Enum.KeyCode.Two)
-  task.wait(.3)
-  local c=me.Character
-  secondTool=c and c:FindFirstChildOfClass("Tool")
- end)
-
- task.spawn(startDungeon)
+ task.spawn(selectSecondSlot)
 
  follow=R.Heartbeat:Connect(function()
   if interacting then return end
@@ -328,6 +339,7 @@ local function startFarm()
 
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
+
   if not h or not t or h.Health<=0 then
    target=nearest(r)
    t=target and target:FindFirstChild("HumanoidRootPart")
@@ -343,22 +355,8 @@ local function startFarm()
 
  task.spawn(function()
   while on do
-   local c=me.Character
-   local equipped=c and c:FindFirstChildOfClass("Tool")
-   if secondTool and equipped~=secondTool and not switching then
-    switching=true
-    press(Enum.KeyCode.Two)
-    task.wait(.4)
-    switching=false
-   end
-   task.wait(.5)
-  end
- end)
-
- task.spawn(function()
-  while on do
    if not interacting and target and target.Parent then
-     attack()
+    attack()
    end
    task.wait(1)
   end
@@ -366,7 +364,24 @@ local function startFarm()
 
  task.spawn(retryLoop)
  task.spawn(keyDoorLoop)
+ task.spawn(function()
+  startDungeon()
+ end)
 end
+
+me.CharacterAdded:Connect(function()
+ secondTool=nil
+ target=nil
+
+ if on then
+  task.spawn(function()
+   task.wait(2)
+   if on then
+    selectSecondSlot()
+   end
+  end)
+ end
+end)
 
 stop.MouseButton1Click:Connect(function()
  on=false
@@ -376,8 +391,10 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
+
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+
  status.Text="AUTO FARM OFF"
 
  if follow then
@@ -387,6 +404,3 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 startFarm()
-
-
-
