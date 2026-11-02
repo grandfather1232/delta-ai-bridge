@@ -86,40 +86,115 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
--- Поиск ближайшего живого NPC только в Workspace.Mobs
-local function nearest(r)
+-- Получение списка настоящих врагов из Mobs
+local function getAliveMobs()
  local mobs=workspace:FindFirstChild("Mobs")
- if not mobs then return nil end
+ local result={}
 
- local best=nil
- local minDistance=math.huge
+ if not mobs then
+  return result
+ end
 
  for _,npc in ipairs(mobs:GetDescendants()) do
   if npc:IsA("Model") then
-   local h=npc:FindFirstChildOfClass("Humanoid")
-   local t=npc:FindFirstChild("HumanoidRootPart")
+   local humanoid=npc:FindFirstChildOfClass("Humanoid")
+   local root=npc:FindFirstChild("HumanoidRootPart")
 
-   if h and t and h.Health>0 then
-    local d=(r.Position-t.Position).Magnitude
-
-    if d<minDistance then
-     minDistance=d
-     best=npc
-    end
+   if humanoid and root
+   and humanoid.Health>0
+   and npc:IsDescendantOf(mobs) then
+    table.insert(result,{
+     Model=npc,
+     Humanoid=humanoid,
+     Root=root
+    })
    end
+  end
+ end
+
+ return result
+end
+
+-- Выбор ближайшего живого врага
+local function nearestMob()
+ local playerRoot=getRoot()
+ if not playerRoot then return nil end
+
+ local mobs=getAliveMobs()
+ local best=nil
+ local minDistance=math.huge
+
+ for _,mob in ipairs(mobs) do
+  local distance=(playerRoot.Position-mob.Root.Position).Magnitude
+
+  if distance<minDistance then
+   minDistance=distance
+   best=mob.Model
   end
  end
 
  return best
 end
 
-local function attack()
- V:SendMouseButtonEvent(0,0,0,true,game,0)
- task.wait(.1)
- V:SendMouseButtonEvent(0,0,0,false,game,0)
- press(Enum.KeyCode.F)
- press(Enum.KeyCode.C)
- press(Enum.KeyCode.V)
+-- Проверка текущей цели
+local function validTarget(npc)
+ if not npc then return false end
+
+ local mobs=workspace:FindFirstChild("Mobs")
+ if not mobs then return false end
+ if not npc:IsDescendantOf(mobs) then return false end
+
+ local humanoid=npc:FindFirstChildOfClass("Humanoid")
+ local root=npc:FindFirstChild("HumanoidRootPart")
+
+ return humanoid~=nil
+  and root~=nil
+  and humanoid.Health>0
+end
+
+-- Полностью отдельная система автоатаки
+local function autoAttackLoop()
+ local lastAttack=0
+
+ while on do
+  if not interacting then
+   if not validTarget(target) then
+    target=nearestMob()
+   end
+
+   if validTarget(target) then
+    local playerRoot=getRoot()
+    local enemyRoot=target:FindFirstChild("HumanoidRootPart")
+
+    if playerRoot and enemyRoot then
+     playerRoot.CFrame=CFrame.lookAt(
+      enemyRoot.Position-Vector3.new(0,8,0),
+      enemyRoot.Position
+     )
+
+     playerRoot.AssemblyLinearVelocity=Vector3.zero
+
+     if os.clock()-lastAttack>=1 then
+      lastAttack=os.clock()
+
+      V:SendMouseButtonEvent(0,0,0,true,game,0)
+      task.wait(.1)
+      V:SendMouseButtonEvent(0,0,0,false,game,0)
+
+      if on and not interacting then
+       press(Enum.KeyCode.F)
+       press(Enum.KeyCode.C)
+       press(Enum.KeyCode.V)
+      end
+     end
+    end
+   else
+    target=nil
+   end
+  end
+
+  task.wait(.1)
+ end
 end
 
 local function dungeonComplete()
@@ -353,39 +428,7 @@ local function startFarm()
  end)
 
  task.spawn(startDungeon)
-
- follow=R.Heartbeat:Connect(function()
-  if not on or interacting then return end
-
-  local c=me.Character
-  local root=c and c:FindFirstChild("HumanoidRootPart")
-  if not root then return end
-
-  local h=target and target:FindFirstChildOfClass("Humanoid")
-  local t=target and target:FindFirstChild("HumanoidRootPart")
-
-  if not h or not t or h.Health<=0 then
-   target=nearest(root)
-   t=target and target:FindFirstChild("HumanoidRootPart")
-  end
-
-  if t then
-   root.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,8,0),t.Position
-   )
-   root.AssemblyLinearVelocity=Vector3.zero
-  end
- end)
-
- task.spawn(function()
-  while on do
-   if not interacting and target and target.Parent then
-    attack()
-   end
-   task.wait(1)
-  end
- end)
-
+ task.spawn(autoAttackLoop)
  task.spawn(retryLoop)
  task.spawn(keyDoorLoop)
 end
