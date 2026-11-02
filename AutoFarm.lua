@@ -121,11 +121,8 @@ local function nearest(r)
  return best
 end
 
-local function attack()
- V:SendMouseButtonEvent(0,0,0,true,game,0)
- task.wait(.03)
- V:SendMouseButtonEvent(0,0,0,false,game,0)
-
+-- Способности: мышь работает отдельно
+local function attackSkills()
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.C)
@@ -324,11 +321,10 @@ local function unlockDoors()
 
  if on then
   doorDone=true
-  status.Text="HOLDING 2"
+  status.Text="SELECTING SLOT 2"
 
-  V:SendKeyEvent(true,Enum.KeyCode.Two,false,game)
-  task.wait(3)
-  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+  press(Enum.KeyCode.Two)
+  task.wait(1)
  end
 
  interacting=false
@@ -392,13 +388,33 @@ local function startFarm()
   end
  end)
 
+ -- Непрерывные клики мышью в отдельном цикле
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
    and target:IsDescendantOf(folder) then
-    attack()
+
+    V:SendMouseButtonEvent(0,0,0,true,game,0)
+    task.wait(.03)
+    V:SendMouseButtonEvent(0,0,0,false,game,0)
+   end
+
+   task.wait(.05)
+  end
+
+  V:SendMouseButtonEvent(0,0,0,false,game,0)
+ end)
+
+ -- Способности отдельно от кликов мыши
+ task.spawn(function()
+  while on do
+   local folder=workspace:FindFirstChild("Mobs")
+
+   if not interacting and target and folder
+   and target:IsDescendantOf(folder) then
+    attackSkills()
    end
 
    task.wait(1)
@@ -428,6 +444,7 @@ stop.MouseButton1Click:Connect(function()
  keyDone=false
  doorDone=false
 
+ V:SendMouseButtonEvent(0,0,0,false,game,0)
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
