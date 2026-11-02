@@ -430,11 +430,19 @@ end)
 startFarm()
 ]==]
 
-local queueFn = queue_on_teleport or (syn and syn.queue_on_teleport)
+-- Повторная постановка скрипта в очередь
+local BOOT_TEMPLATE = [====[
+local SCRIPT=%s
+local BOOT_TEMPLATE=%s
+
+local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
 
 if queueFn then
- local queuedCode =
-  "local s="..string.format("%q",SCRIPT).."; loadstring(s)()"
+ local queuedCode=string.format(
+  BOOT_TEMPLATE,
+  string.format("%%q",SCRIPT),
+  string.format("%%q",BOOT_TEMPLATE)
+ )
 
  pcall(function()
   queueFn(queuedCode)
@@ -442,6 +450,18 @@ if queueFn then
 end
 
 local run=loadstring(SCRIPT)
+if run then
+ run()
+end
+]====]
+
+local BOOT=string.format(
+ BOOT_TEMPLATE,
+ string.format("%q",SCRIPT),
+ string.format("%q",BOOT_TEMPLATE)
+)
+
+local run=loadstring(BOOT)
 if run then
  run()
 end
