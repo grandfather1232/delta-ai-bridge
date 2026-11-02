@@ -86,7 +86,7 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
--- Ищем только настоящих врагов в Workspace.Mobs
+-- Ищем только NPC из Workspace.Mobs
 local function nearest(r)
  local mobs=workspace:FindFirstChild("Mobs")
  if not mobs then return nil end
