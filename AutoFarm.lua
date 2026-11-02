@@ -19,9 +19,6 @@ end)
 
 local on=false
 local target=nil
-local targetLockUntil=0
-local TARGET_LOCK_TIME=3
-
 local follow=nil
 local retryBusy=false
 local startedCount=0
@@ -30,6 +27,7 @@ local keyDone=false
 local doorDone=false
 local slotBusy=false
 local characterVersion=0
+local lostAt=0
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -124,23 +122,7 @@ local function nearest(r)
  return best
 end
 
-local function isTargetAlive()
- local folder=workspace:FindFirstChild("Mobs")
-
- if not folder or not target then
-  return false
- end
-
- if not target:IsA("Model") or target.Parent~=folder then
-  return false
- end
-
- local h=target:FindFirstChildOfClass("Humanoid")
- local t=target:FindFirstChild("HumanoidRootPart")
-
- return h~=nil and t~=nil and h.Health>0
-end
-
+-- Способности: мышь работает отдельно
 local function attackSkills()
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
@@ -151,7 +133,6 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
-
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
@@ -166,11 +147,9 @@ local function dungeonComplete()
   if obj:IsA("GuiObject") and not obj.Visible then
    return false
   end
-
   if obj:IsA("ScreenGui") and not obj.Enabled then
    return false
   end
-
   obj=obj.Parent
  end
 
@@ -179,13 +158,10 @@ end
 
 startedEvent.OnClientEvent:Connect(function()
  startedCount=startedCount+1
- keyDone=fals
-
-
-e
+ keyDone=false
  doorDone=false
  target=nil
- targetLockUntil=0
+ lostAt=0
 end)
 
 local function startDungeon()
@@ -249,7 +225,6 @@ local function findKey()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="key" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChild("Handle",true)
     or obj:FindFirstChildWhichIsA("BasePart",true)
@@ -269,7 +244,6 @@ local function findDoors()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="keyhole" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
@@ -356,10 +330,7 @@ local function unlockDoors()
  end
 
  interacting=false
-
- if on then
-  status.Text="AUTO FARM ON"
- end
+ if on then status.Text="AUTO FARM ON" end
 
  return on
 end
@@ -395,38 +366,51 @@ local function startFarm()
  follow=R.Heartbeat:Connect(function()
   if not on or interacting then return end
 
-  local root=getRoot()
+  local c=me.Character
+  local root=c and c:FindFirstChild("HumanoidRootPart")
   if not root then return end
 
-  – Сохраняем текущую цель, пока она жива
-  if not isTargetAlive() then
-   target=nil
+  local folder=workspace:FindFirstChild("Mobs")
+  local h=target and target:FindFirstChildOfClass("Humanoid")
+  local t=target and target:FindFirstChild("HumanoidRootPart")
 
-   – Не выбираем новую цель чаще одного раза в 3 секунды
-   if os.clock()>=targetLockUntil then target=nearest(root)
+  -- цель остаётся, пока моб в папке и не умер
+  local inFolder=folder and target
+   and target:IsA("Model")
+   and target:IsDescendantOf(folder)
+  local dead=h and h.Health<=0
 
-    if target then
-     targetLockUntil=os.clock()+TARGET_LOCK_TIME
-    end
-   end
+  if inFolder and not dead and (not h or not t) then
+   -- моб жив, но Humanoid/HRP на миг пропал: ждём до 0.5 сек
+   if lostAt==0 then lostAt=os.clock() end
+   if os.clock()-lostAt<0.5 then return end
+  else
+   lostAt=0
   end
 
-  if isTargetAlive() then
-   local t=target:FindFirstChild("HumanoidRootPart")
+  -- цель умерла/исчезла: следующую выбираем сразу
+  if not inFolder or dead or not h or not t then
+   target=nearest(root)
+   t=target and target:FindFirstChild("HumanoidRootPart")
+   lostAt=0
+  end
 
+  if t then
    root.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,8,0),
-    t.Position
+    t.Position-Vector3.new(0,8,0),t.Position
    )
-
    root.AssemblyLinearVelocity=Vector3.zero
   end
  end)
 
- – Клики мышью отдельно
+ -- Непрерывные клики мышью в отдельном цикле
  task.spawn(function()
   while on do
-   if not interacting and isTargetAlive() then
+   local folder=workspace:FindFirstChild("Mobs")
+
+   if not interacting and target and folder
+   and target:IsDescendantOf(folder) then
+
     V:SendMouseButtonEvent(0,0,0,true,game,0)
     task.wait(.3)
     V:SendMouseButtonEvent(0,0,0,false,game,0)
@@ -438,10 +422,13 @@ local function startFarm()
   V:SendMouseButtonEvent(0,0,0,false,game,0)
  end)
 
- – Способности отдельно от кликов
+ -- Способности отдельно от кликов мыши
  task.spawn(function()
   while on do
-   if not interacting and isTargetAlive() then
+   local folder=workspace:FindFirstChild("Mobs")
+
+   if not interacting and target and folder
+   and target:IsDescendantOf(folder) then
     attackSkills()
    end
 
@@ -456,7 +443,7 @@ end
 me.CharacterAdded:Connect(function()
  characterVersion=characterVersion+1
  target=nil
- targetLockUntil=0
+ lostAt=0
 
  if on then
   task.spawn(function()
@@ -472,6 +459,7 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
+ lostAt=0
 
  V:SendMouseButtonEvent(0,0,0,false,game,0)
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
@@ -522,8 +510,3 @@ local run=loadstring(BOOT)
 if run then
  run()
 end
-
-
-
-
-
