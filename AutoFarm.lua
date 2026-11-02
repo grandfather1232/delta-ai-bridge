@@ -32,7 +32,7 @@ local function pressE(duration)
     VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
--- Ищем ключи
+-- Поиск ключей
 local keys = {}
 
 for _, obj in ipairs(workspace:GetDescendants()) do
@@ -55,7 +55,7 @@ end
 label.Text = "KEYS FOUND: " .. #keys
 task.wait(1)
 
--- Берём второй найденный ключ
+-- Подбор второго ключа
 local key = keys[2]
 
 if not key then
@@ -74,7 +74,7 @@ label.Text = "PICKING KEY"
 pressE(0.25)
 task.wait(2)
 
--- Ищем замочные скважины
+-- Поиск замочных скважин
 local doors = {}
 
 for _, obj in ipairs(workspace:GetDescendants()) do
@@ -96,20 +96,38 @@ end
 label.Text = "DOORS FOUND: " .. #doors
 task.wait(1)
 
--- Взаимодействуем с дверями
+-- Телепорт и зависание возле двери
 for i, door in ipairs(doors) do
     root = getRoot()
     if not root then break end
 
     label.Text = "GOING TO DOOR " .. i
 
-    root.CFrame = door.part.CFrame * CFrame.new(0, 0, 2)
-    task.wait(2)
+    root.CFrame = door.part.CFrame * CFrame.new(0, 0, -1)
+    root.AssemblyLinearVelocity = Vector3.zero
 
-    label.Text = "UNLOCKING DOOR " .. i
-    pressE(1.5)
+    local attachment = Instance.new("Attachment")
+    attachment.Parent = root
+
+    local velocity = Instance.new("LinearVelocity")
+    velocity.Attachment0 = attachment
+    velocity.MaxForce = math.huge
+    velocity.VectorVelocity = Vector3.zero
+    velocity.Parent = root
 
     task.wait(3)
+
+    label.Text = "UNLOCKING DOOR " .. i
+
+    for attempt = 1, 3 do
+        pressE(1.5)
+        task.wait(1)
+    end
+
+    velocity:Destroy()
+    attachment:Destroy()
+
+    task.wait(2)
 end
 
 label.Text = "TEST FINISHED"
