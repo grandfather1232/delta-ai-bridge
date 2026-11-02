@@ -160,7 +160,7 @@ local function startDungeon()
  status.Text="STARTING DUNGEON"
 
  local ok=pcall(function()
-  startRemote:InvokeServer()
+  return startRemote:InvokeServer()
  end)
 
  if ok then
@@ -169,6 +169,8 @@ local function startDungeon()
   status.Text="START ERROR"
  end
 end
+
+-- RETRY: ЛОГИКА ИЗ СТАРОГО СКРИПТА
 
 local function retryLoop()
  while on do
@@ -179,13 +181,11 @@ local function retryLoop()
    local before=startedCount
 
    local ok=pcall(function()
-    voteRemote:
-
-
-InvokeServer("Retry")
+    return voteRemote:InvokeServer("Retry")
    end)
 
    if ok then
+    status.Text="WAITING..."
     local elapsed=0
 
     while on and elapsed<10 do
@@ -197,6 +197,8 @@ InvokeServer("Retry")
     if on and startedCount==before then
      startDungeon()
     end
+   else
+    status.Text="RETRY ERROR"
    end
 
    while on and dungeonComplete() do
