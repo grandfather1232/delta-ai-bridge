@@ -1,111 +1,67 @@
 local Players = game:GetService("Players")
 local VIM = game:GetService("VirtualInputManager")
 local Core = game:GetService("CoreGui")
-
-local player = Players.LocalPlayer
-local stopped = false
+local me = Players.LocalPlayer
 
 pcall(function()
-    local old = Core:FindFirstChild("AllKeysTest")
+    local old = Core:FindFirstChild("DoorTest")
     if old then old:Destroy() end
 end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "AllKeysTest"
+gui.Name = "DoorTest"
 gui.ResetOnSpawn = false
 gui.Parent = Core
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.fromOffset(260, 110)
-frame.Position = UDim2.new(0.5, -130, 0.25, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-frame.Active = true
-frame.Draggable = true
+local label = Instance.new("TextLabel")
+label.Parent = gui
+label.Size = UDim2.fromOffset(250, 55)
+label.Position = UDim2.new(0.5, -125, 0.2, 0)
+label.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+label.TextColor3 = Color3.new(1, 1, 1)
+label.TextScaled = true
 
-local status = Instance.new("TextLabel", frame)
-status.Size = UDim2.new(1, 0, 0, 65)
-status.BackgroundTransparency = 1
-status.TextColor3 = Color3.new(1, 1, 1)
-status.TextWrapped = true
-status.Text = "Подготовка..."
+local function holdE()
+    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(1.5)
+    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
 
-local stop = Instance.new("TextButton", frame)
-stop.Size = UDim2.new(1, -10, 0, 35)
-stop.Position = UDim2.fromOffset(5, 70)
-stop.Text = "STOP"
-stop.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
-stop.TextColor3 = Color3.new(1, 1, 1)
+local found = {}
 
-stop.MouseButton1Click:Connect(function()
-    stopped = true
-    status.Text = "Остановлено"
-end)
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj.Name:lower() == "keyhole" then
+        local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
 
-task.spawn(function()
-    local keys = {}
+        local part = obj:IsA("BasePart") and obj
+            or obj:FindFirstChildWhichIsA("BasePart", true)
 
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name:lower() == "key" then
-            local prompt = obj:FindFirstChildWhichIsA(
-                "ProximityPrompt", true
-            )
-
-            local part = obj:FindFirstChild("Handle", true)
-            if not (part and part:IsA("BasePart")) then
-                part = obj:FindFirstChildWhichIsA("BasePart", true)
-            end
-
-            if prompt and part then
-                table.insert(keys, {
-                    object = obj,
-                    prompt = prompt,
-                    part = part
-                })
-            end
+        if prompt and part and prompt.Enabled then
+            table.insert(found, {
+                prompt = prompt,
+                part = part
+            })
         end
     end
+end
 
-    status.Text = "Найдено объектов: " .. #keys
-    task.wait(1)
+label.Text = "DOORS FOUND: " .. #found
+task.wait(1)
 
-    for i, data in ipairs(keys) do
-        if stopped then break end
+for i, data in ipairs(found) do
+    local character = me.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
 
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then break end
 
-        if root and data.object:IsDescendantOf(workspace)
-        and data.prompt.Enabled then
+    label.Text = "DOOR " .. i .. " / " .. #found
 
-            status.Text = "Проверяю ключ " .. i .. "/" .. #keys
+    root.CFrame = data.part.CFrame * CFrame.new(0, 0, 2)
+    task.wait(2)
 
-            root.CFrame = data.part.CFrame * CFrame.new(0, 2, 0)
-            task.wait(1)
+    holdE()
 
-            if stopped then break end
+    task.wait(3)
+end
 
-            VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-            task.wait(0.25)
-            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-
-            task.wait(1)
-
-            if not data.object:IsDescendantOf(workspace) then
-                status.Text = "Ключ " .. i .. ": объект исчез"
-            elseif not data.prompt.Enabled then
-                status.Text = "Ключ " .. i .. ": взаимодействие отключено"
-            else
-                status.Text = "Ключ " .. i .. ": остался на месте"
-            end
-
-            task.wait(1)
-        end
-    end
-
-    if not stopped then
-        status.Text = "Проверка завершена"
-    end
-end)
-
-
-
+label.Text = "TEST FINISHED"
