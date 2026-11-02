@@ -1,466 +1,499 @@
-local P=game:GetService("Players")
-local R=game:GetService("RunService")
-local V=game:GetService("VirtualInputManager")
-local RS=game:GetService("ReplicatedStorage")
-local Core=game:GetService("CoreGui")
-local me=P.LocalPlayer
-local pg=me:WaitForChild("PlayerGui")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VIM = game:GetService("VirtualInputManager")
+local RS = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
 
-local services=RS.ReplicatedStorage.Packages.Knit.Services
-local startRemote=services.DungeonService.RF.StartDungeon
-local voteRemote=services.PartyService.RF.VoteOn
-local startedEvent=services.DungeonService.RE.DungeonStarted
+local player = Players.LocalPlayer
+local pg = player:WaitForChild("PlayerGui")
+
+local services = RS.ReplicatedStorage.Packages.Knit.Services
+local startRemote = services.DungeonService.RF.StartDungeon
+local voteRemote = services.PartyService.RF.VoteOn
+local startedEvent = services.DungeonService.RE.DungeonStarted
 
 pcall(function()
- local old=Core:FindFirstChild("AutoFarm")
- if old then old:Destroy() end
+    local old = CoreGui:FindFirstChild("AutoFarm")
+    if old then old:Destroy() end
 end)
 
-local on=false
-local target=nil
-local follow=nil
-local retryBusy=false
-local startedCount=0
-local interacting=false
-local keyDone=false
-local doorDone=false
-local slotBusy=false
-local characterVersion=0
+local running = false
+local target = nil
+local interacting = false
+local keyDone = false
+local doorDone = false
+local retryBusy = false
+local startedCount = 0
+local slotBusy = false
+local characterVersion = 0
 
-local g=Instance.new("ScreenGui")
-g.Name="AutoFarm"
-g.ResetOnSpawn=false
-g.Parent=Core
+-- GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoFarm"
+gui.ResetOnSpawn = false
+gui.Parent = CoreGui
 
-local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,125)
-f.Position=UDim2.new(.5,-82,.5,0)
-f.BackgroundColor3=Color3.fromRGB(35,35,45)
-f.Active=true
-f.Draggable=true
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(190, 110)
+frame.Position = UDim2.new(0.5, -95, 0.5, 0)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
 
-local status=Instance.new("TextLabel",f)
-status.Size=UDim2.new(1,0,0,25)
-status.Text="AUTO FARM ON"
-status.TextColor3=Color3.new(1,1,1)
-status.BackgroundTransparency=1
-status.TextSize=14
+local label = Instance.new("TextLabel")
+label.Size = UDim2.new(1, 0, 0, 35)
+label.BackgroundTransparency = 1
+label.Text = "AUTO FARM: OFF"
+label.TextColor3 = Color3.new(1, 1, 1)
+label.TextSize = 14
+label.Parent = frame
 
-local stop=Instance.new("TextButton",f)
-stop.Size=UDim2.new(1,-10,0,35)
-stop.Position=UDim2.fromOffset(5,65)
-stop.Text="STOP"
-stop.TextColor3=Color3.new(1,1,1)
-stop.BackgroundColor3=Color3.fromRGB(160,40,40)
+local stop = Instance.new("TextButton")
+stop.Size = UDim2.new(1, -10, 0, 45)
+stop.Position = UDim2.fromOffset(5, 50)
+stop.Text = "STOP"
+stop.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
+stop.TextColor3 = Color3.new(1, 1, 1)
+stop.TextSize = 16
+stop.Parent = frame
 
-local function press(k)
- V:SendKeyEvent(true,k,false,game)
- task.wait(.12)
- V:SendKeyEvent(false,k,false,game)
+local function setStatus(text)
+    if running then
+        label.Text = text
+    end
+end
+
+local function press(key)
+    VIM:SendKeyEvent(true, key, false, game)
+    task.wait(0.1)
+    VIM:SendKeyEvent(false, key, false, game)
 end
 
 local function holdE(duration)
- V:SendKeyEvent(true,Enum.KeyCode.E,false,game)
- task.wait(duration)
- V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(duration)
+    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
 local function getRoot()
- local c=me.Character
- return c and c:FindFirstChild("HumanoidRootPart")
+    local character = player.Character
+    return character and character:FindFirstChild("HumanoidRootPart")
 end
 
+-- ВЫБОР ВТОРОГО СЛОТА
 local function selectSecondSlot(version)
- if slotBusy or not on then return end
- slotBusy=true
+    if slotBusy or not running then return end
+    slotBusy = true
 
- task.wait(1.5)
+    task.wait(1.5)
 
- if on and version==characterVersion then
-  status.Text="SELECTING SLOT 2"
-  press(Enum.KeyCode.Two)
-  task.wait(.5)
- end
-
- slotBusy=false
- if on then status.Text="AUTO FARM ON" end
-end
-
--- Получение списка настоящих врагов из Mobs
-local function getAliveMobs()
- local mobs=workspace:FindFirstChild("Mobs")
- local result={}
-
- if not mobs then
-  return result
- end
-
- for _,npc in ipairs(mobs:GetDescendants()) do
-  if npc:IsA("Model") then
-   local humanoid=npc:FindFirstChildOfClass("Humanoid")
-   local root=npc:FindFirstChild("HumanoidRootPart")
-
-   if humanoid and root
-   and humanoid.Health>0
-   and npc:IsDescendantOf(mobs) then
-    table.insert(result,{
-     Model=npc,
-     Humanoid=humanoid,
-     Root=root
-    })
-   end
-  end
- end
-
- return result
-end
-
--- Выбор ближайшего живого врага
-local function nearestMob()
- local playerRoot=getRoot()
- if not playerRoot then return nil end
-
- local mobs=getAliveMobs()
- local best=nil
- local minDistance=math.huge
-
- for _,mob in ipairs(mobs) do
-  local distance=(playerRoot.Position-mob.Root.Position).Magnitude
-
-  if distance<minDistance then
-   minDistance=distance
-   best=mob.Model
-  end
- end
-
- return best
-end
-
--- Проверка текущей цели
-local function validTarget(npc)
- if not npc then return false end
-
- local mobs=workspace:FindFirstChild("Mobs")
- if not mobs then return false end
- if not npc:IsDescendantOf(mobs) then return false end
-
- local humanoid=npc:FindFirstChildOfClass("Humanoid")
- local root=npc:FindFirstChild("HumanoidRootPart")
-
- return humanoid~=nil
-  and root~=nil
-  and humanoid.Health>0
-end
-
--- Полностью отдельная система автоатаки
-local function autoAttackLoop()
- local lastAttack=0
-
- while on do
-  if not interacting then
-   if not validTarget(target) then
-    target=nearestMob()
-   end
-
-   if validTarget(target) then
-    local playerRoot=getRoot()
-    local enemyRoot=target:FindFirstChild("HumanoidRootPart")
-
-    if playerRoot and enemyRoot then
-     playerRoot.CFrame=CFrame.lookAt(
-      enemyRoot.Position-Vector3.new(0,8,0),
-      enemyRoot.Position
-     )
-
-     playerRoot.AssemblyLinearVelocity=Vector3.zero
-
-     if os.clock()-lastAttack>=1 then
-      lastAttack=os.clock()
-
-      V:SendMouseButtonEvent(0,0,0,true,game,0)
-      task.wait(.1)
-      V:SendMouseButtonEvent(0,0,0,false,game,0)
-
-      if on and not interacting then
-       press(Enum.KeyCode.F)
-       press(Enum.KeyCode.C)
-       press(Enum.KeyCode.V)
-      end
-     end
+    if running and version == characterVersion then
+        setStatus("SELECTING SLOT 2")
+        press(Enum.KeyCode.Two)
+        task.wait(0.5)
     end
-   else
-    target=nil
-   end
-  end
 
-  task.wait(.1)
- end
+    slotBusy = false
 end
 
+-- АВТОАТАКА: ТОЛЬКО WORKSPACE.MOBS
+local function validMob(mob)
+    local folder = workspace:FindFirstChild("Mobs")
+
+    if not folder or not mob or not mob:IsA("Model") then
+        return false
+    end
+
+    if not mob:IsDescendantOf(folder) then
+        return false
+    end
+
+    local humanoid = mob:FindFirstChildOfClass("Humanoid")
+    local root = mob:FindFirstChild("HumanoidRootPart")
+
+    return humanoid ~= nil
+        and root ~= nil
+        and humanoid.Health > 0
+end
+
+local function findNearest()
+    local folder = workspace:FindFirstChild("Mobs")
+    local root = getRoot()
+
+    if not folder or not root then
+        return nil
+    end
+
+    local nearest = nil
+    local shortest = math.huge
+
+    for _, mob in ipairs(folder:GetDescendants()) do
+        if validMob(mob) then
+            local mobRoot = mob:FindFirstChild("HumanoidRootPart")
+            local distance = (root.Position - mobRoot.Position).Magnitude
+
+            if distance < shortest then
+                shortest = distance
+                nearest = mob
+            end
+        end
+    end
+
+    return nearest
+end
+
+local function autoAttackLoop()
+    local lastAttack = 0
+    local attackDelay = 1
+
+    while running do
+        if not interacting then
+            if not validMob(target) then
+                target = findNearest()
+            end
+
+            if validMob(target) then
+                local root = getRoot()
+                local enemyRoot = target:FindFirstChild("HumanoidRootPart")
+
+                if root and enemyRoot then
+                    setStatus("TARGET: " .. target.Name)
+
+                    root.CFrame = CFrame.lookAt(
+                        enemyRoot.Position - Vector3.new(0, 8, 0),
+                        enemyRoot.Position
+                    )
+
+                    root.AssemblyLinearVelocity = Vector3.zero
+
+                    if os.clock() - lastAttack >= attackDelay then
+                        lastAttack = os.clock()
+
+                        VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                        task.wait(0.1)
+                        VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+
+                        if running and not interacting then
+                            press(Enum.KeyCode.F)
+                            press(Enum.KeyCode.C)
+                            press(Enum.KeyCode.V)
+                        end
+                    end
+                end
+            else
+                target = nil
+                setStatus("SEARCHING MOBS...")
+            end
+        end
+
+        task.wait(0.1)
+    end
+end
+
+-- ПРОВЕРКА ЗАВЕРШЕНИЯ ПОДЗЕМЕЛЬЯ
 local function dungeonComplete()
- local screen=pg:FindFirstChild("DungeonComplete")
- if not screen then return false end
+    local screen = pg:FindFirstChild("DungeonComplete")
 
- if screen:IsA("ScreenGui") and not screen.Enabled then
-  return false
- end
+    if not screen then return false end
 
- local button=screen:FindFirstChild("RetryBtn",true)
- if not button or not button:IsA("GuiObject") then
-  return false
- end
+    if screen:IsA("ScreenGui") and not screen.Enabled then
+        return false
+    end
 
- local obj=button
- while obj and obj~=pg do
-  if obj:IsA("GuiObject") and not obj.Visible then
-   return false
-  end
-  if obj:IsA("ScreenGui") and not obj.Enabled then
-   return false
-  end
-  obj=obj.Parent
- end
+    local button = screen:FindFirstChild("RetryBtn", true)
 
- return true
+    if not button or not button:IsA("GuiObject") then
+        return false
+    end
+
+    local obj = button
+
+    while obj and obj ~= pg do
+        if obj:IsA("GuiObject") and not obj.Visible then
+            return false
+        end
+
+        if obj:IsA("ScreenGui") and not obj.Enabled then
+            return false
+        end
+
+        obj = obj.Parent
+    end
+
+    return true
 end
 
 startedEvent.OnClientEvent:Connect(function()
- startedCount=startedCount+1
- keyDone=false
- doorDone=false
- target=nil
+    startedCount = startedCount + 1
+    keyDone = false
+    doorDone = false
+    target = nil
 end)
 
+-- ЗАПУСК ПОДЗЕМЕЛЬЯ
 local function startDungeon()
- status.Text="STARTING DUNGEON"
+    setStatus("STARTING DUNGEON")
 
- local ok=pcall(function()
-  startRemote:InvokeServer()
- end)
+    local ok = pcall(function()
+        startRemote:InvokeServer()
+    end)
 
- if ok then
-  status.Text="AUTO FARM ON"
- else
-  status.Text="START ERROR"
- end
+    if ok then
+        setStatus("AUTO FARM ON")
+    else
+        setStatus("START ERROR")
+    end
 end
 
+-- АВТОМАТИЧЕСКИЙ RETRY
 local function retryLoop()
- while on do
-  if dungeonComplete() and not retryBusy then
-   retryBusy=true
-   status.Text="RETRYING..."
+    while running do
+        if dungeonComplete() and not retryBusy then
+            retryBusy = true
+            setStatus("RETRYING...")
 
-   local before=startedCount
+            local before = startedCount
 
-   local ok=pcall(function()
-    voteRemote:InvokeServer("Retry")
-   end)
+            local ok = pcall(function()
+                voteRemote:InvokeServer("Retry")
+            end)
 
-   if ok then
-    local elapsed=0
+            if ok then
+                local elapsed = 0
 
-    while on and elapsed<10 do
-     if startedCount>before then break end
-     task.wait(.5)
-     elapsed=elapsed+.5
+                while running and elapsed < 10 do
+                    if startedCount > before then break end
+
+                    task.wait(0.5)
+                    elapsed = elapsed + 0.5
+                end
+
+                if running and startedCount == before then
+                    startDungeon()
+                end
+            end
+
+            while running and dungeonComplete() do
+                task.wait(0.5)
+            end
+
+            task.wait(2)
+            retryBusy = false
+        end
+
+        task.wait(0.5)
     end
-
-    if on and startedCount==before then
-     startDungeon()
-    end
-   end
-
-   while on and dungeonComplete() do
-    task.wait(.5)
-   end
-
-   task.wait(2)
-   retryBusy=false
-  end
-
-  task.wait(.5)
- end
 end
 
+-- ПОИСК КЛЮЧА
 local function findKey()
- local keys={}
+    local keys = {}
 
- for _,obj in ipairs(workspace:GetDescendants()) do
-  if obj.Name:lower()=="key" then
-   local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-   local part=obj:IsA("BasePart") and obj
-    or obj:FindFirstChild("Handle",true)
-    or obj:FindFirstChildWhichIsA("BasePart",true)
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name:lower() == "key" then
+            local prompt = obj:FindFirstChildWhichIsA(
+                "ProximityPrompt",
+                true
+            )
 
-   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
-    table.insert(keys,{part=part,prompt=prompt})
-   end
-  end
- end
+            local part = obj:IsA("BasePart") and obj
+                or obj:FindFirstChild("Handle", true)
+                or obj:FindFirstChildWhichIsA("BasePart", true)
 
- return keys[2]
-end
-
-local function findDoors()
- local doors={}
-
- for _,obj in ipairs(workspace:GetDescendants()) do
-  if obj.Name:lower()=="keyhole" then
-   local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
-   local part=obj:IsA("BasePart") and obj
-    or obj:FindFirstChildWhichIsA("BasePart",true)
-
-   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
-    table.insert(doors,{part=part,prompt=prompt})
-   end
-  end
- end
-
- return doors
-end
-
-local function collectKey()
- local key=findKey()
- if not key then return false end
-
- local root=getRoot()
- if not root then return false end
-
- interacting=true
- status.Text="GOING TO KEY"
-
- root.CFrame=key.part.CFrame*CFrame.new(0,2,0)
- task.wait(1)
-
- if on then
-  status.Text="PICKING KEY"
-  press(Enum.KeyCode.E)
-  task.wait(2)
- end
-
- interacting=false
- return on
-end
-
-local function unlockDoors()
- local doors=findDoors()
- if #doors==0 then return false end
-
- interacting=true
-
- for i,door in ipairs(doors) do
-  if not on then break end
-
-  local root=getRoot()
-  if not root then break end
-
-  status.Text="GOING TO DOOR "..i
-  root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
-  root.AssemblyLinearVelocity=Vector3.zero
-
-  local attachment=Instance.new("Attachment")
-  attachment.Parent=root
-
-  local velocity=Instance.new("LinearVelocity")
-  velocity.Attachment0=attachment
-  velocity.MaxForce=math.huge
-  velocity.VectorVelocity=Vector3.zero
-  velocity.Parent=root
-
-  task.wait(3)
-
-  if on then
-   status.Text="UNLOCKING DOOR "..i
-
-   for attempt=1,3 do
-    if not on then break end
-    holdE(1.5)
-    task.wait(1)
-   end
-  end
-
-  velocity:Destroy()
-  attachment:Destroy()
-  task.wait(2)
- end
-
- if on then
-  doorDone=true
-  status.Text="HOLDING 2"
-
-  V:SendKeyEvent(true,Enum.KeyCode.Two,false,game)
-  task.wait(3)
-  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
- end
-
- interacting=false
- if on then status.Text="AUTO FARM ON" end
-
- return on
-end
-
-local function keyDoorLoop()
- while on do
-  if not keyDone then
-   if findKey() then
-    if collectKey() and on then
-     keyDone=true
+            if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+                table.insert(keys, {
+                    part = part,
+                    prompt = prompt
+                })
+            end
+        end
     end
-   end
 
-  elseif not doorDone then
-   if #findDoors()>0 then
-    unlockDoors()
-   end
-  end
-
-  task.wait(1)
- end
+    return keys[2]
 end
 
+-- ПОИСК ДВЕРЕЙ
+local function findDoors()
+    local doors = {}
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name:lower() == "keyhole" then
+            local prompt = obj:FindFirstChildWhichIsA(
+                "ProximityPrompt",
+                true
+            )
+
+            local part = obj:IsA("BasePart") and obj
+                or obj:FindFirstChildWhichIsA("BasePart", true)
+
+            if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+                table.insert(doors, {
+                    part = part,
+                    prompt = prompt
+                })
+            end
+        end
+    end
+
+    return doors
+end
+
+-- ПОДБОР КЛЮЧА
+local function collectKey()
+    local key = findKey()
+    if not key then return false end
+
+    local root = getRoot()
+    if not root then return false end
+
+    interacting = true
+    setStatus("GOING TO KEY")
+
+    root.CFrame = key.part.CFrame * CFrame.new(0, 2, 0)
+    task.wait(1)
+
+    if running then
+        setStatus("PICKING KEY")
+        press(Enum.KeyCode.E)
+        task.wait(2)
+    end
+
+    interacting = false
+    return running
+end
+
+-- ОТКРЫТИЕ ДВЕРЕЙ
+local function unlockDoors()
+    local doors = findDoors()
+    if #doors == 0 then return false end
+
+    interacting = true
+
+    for i, door in ipairs(doors) do
+        if not running then break end
+
+        local root = getRoot()
+        if not root then break end
+
+        setStatus("GOING TO DOOR " .. i)
+
+        root.CFrame = door.part.CFrame * CFrame.new(0, 0, -1)
+        root.AssemblyLinearVelocity = Vector3.zero
+
+        local attachment = Instance.new("Attachment")
+        attachment.Parent = root
+
+        local velocity = Instance.new("LinearVelocity")
+        velocity.Attachment0 = attachment
+        velocity.MaxForce = math.huge
+        velocity.VectorVelocity = Vector3.zero
+        velocity.Parent = root
+
+        task.wait(3)
+
+        if running then
+            setStatus("UNLOCKING DOOR " .. i)
+
+            for attempt = 1, 3 do
+                if not running then break end
+
+                holdE(1.5)
+                task.wait(1)
+            end
+        end
+
+        velocity:Destroy()
+        attachment:Destroy()
+
+        task.wait(2)
+    end
+
+    if running then
+        doorDone = true
+        setStatus("HOLDING 2")
+
+        VIM:SendKeyEvent(true, Enum.KeyCode.Two, false, game)
+        task.wait(3)
+        VIM:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    end
+
+    interacting = false
+    return running
+end
+
+-- ЦИКЛ КЛЮЧЕЙ И ДВЕРЕЙ
+local function keyDoorLoop()
+    while running do
+        if not keyDone then
+            if findKey() then
+                if collectKey() and running then
+                    keyDone = true
+                end
+            end
+
+        elseif not doorDone then
+            if #findDoors() > 0 then
+                unlockDoors()
+            end
+        end
+
+        task.wait(1)
+    end
+end
+
+-- ЗАПУСК ВСЕХ СИСТЕМ
 local function startFarm()
- if on then return end
- on=true
+    if running then return end
 
- task.spawn(function()
-  selectSecondSlot(characterVersion)
- end)
+    running = true
+    target = nil
+    interacting = false
+    keyDone = false
+    doorDone = false
+    retryBusy = false
 
- task.spawn(startDungeon)
- task.spawn(autoAttackLoop)
- task.spawn(retryLoop)
- task.spawn(keyDoorLoop)
+    setStatus("AUTO FARM: ON")
+
+    task.spawn(function()
+        selectSecondSlot(characterVersion)
+    end)
+
+    task.spawn(startDungeon)
+    task.spawn(autoAttackLoop)
+    task.spawn(retryLoop)
+    task.spawn(keyDoorLoop)
 end
 
-me.CharacterAdded:Connect(function()
- characterVersion=characterVersion+1
- target=nil
+-- ПОВТОРНЫЙ ВЫБОР СЛОТА ПОСЛЕ ВОЗРОЖДЕНИЯ
+player.CharacterAdded:Connect(function()
+    characterVersion = characterVersion + 1
+    target = nil
 
- if on then
-  task.spawn(function()
-   selectSecondSlot(characterVersion)
-  end)
- end
+    if running then
+        task.spawn(function()
+            selectSecondSlot(characterVersion)
+        end)
+    end
 end)
 
+-- ОСТАНОВКА
 stop.MouseButton1Click:Connect(function()
- on=false
- interacting=false
- target=nil
- retryBusy=false
- keyDone=false
- doorDone=false
+    running = false
+    interacting = false
+    target = nil
+    retryBusy = false
+    keyDone = false
+    doorDone = false
 
- V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
- V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+    VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    VIM:SendKeyEvent(false, Enum.KeyCode.Two, false, game)
+    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    VIM:SendKeyEvent(false, Enum.KeyCode.C, false, game)
+    VIM:SendKeyEvent(false, Enum.KeyCode.V, false, game)
 
- status.Text="AUTO FARM OFF"
-
- if follow then
-  follow:Disconnect()
-  follow=nil
- end
+    label.Text = "AUTO FARM: OFF"
 end)
 
 startFarm()
