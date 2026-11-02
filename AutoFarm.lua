@@ -1,3 +1,4 @@
+local SCRIPT = [==[
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
@@ -26,7 +27,6 @@ local keyDone=false
 local doorDone=false
 local slotBusy=false
 local characterVersion=0
-local lastTeleport=0
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -121,6 +121,7 @@ local function nearest(r)
  return best
 end
 
+-- Способности: мышь работает отдельно
 local function attackSkills()
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
@@ -183,8 +184,7 @@ local function retryLoop()
 
    local before=startedCount
 
-
-local ok=pcall(function()
+   local ok=pcall(function()
     voteRemote:InvokeServer("Retry")
    end)
 
@@ -380,9 +380,7 @@ local function startFarm()
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
 
-  if t and os.clock()-lastTeleport>=0.5 then
-   lastTeleport=os.clock()
-
+  if t then
    root.CFrame=CFrame.lookAt(
     t.Position-Vector3.new(0,8,0),t.Position
    )
@@ -390,7 +388,7 @@ local function startFarm()
   end
  end)
 
- – Клики мышью: удержание 0.5 сек, пауза 0.5 сек
+ -- Непрерывные клики мышью в отдельном цикле
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
@@ -399,18 +397,17 @@ local function startFarm()
    and target:IsDescendantOf(folder) then
 
     V:SendMouseButtonEvent(0,0,0,true,game,0)
-    task.wait(.5)
+    task.wait(.3)
     V:SendMouseButtonEvent(0,0,0,false,game,0)
-    task.wait(.5)
-   else
-    task.wait(.05)
    end
+
+   task.wait(.3)
   end
 
   V:SendMouseButtonEvent(0,0,0,false,game,0)
  end)
 
- – Способности с прежним интервалом
+ -- Способности отдельно от кликов мыши
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
@@ -460,3 +457,39 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 startFarm()
+]==]
+
+local BOOT_TEMPLATE = [====[
+local SCRIPT=%s
+local BOOT_TEMPLATE=%s
+
+local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
+
+if queueFn then
+ local queuedCode=string.format(
+  BOOT_TEMPLATE,
+  string.format("%%q",SCRIPT),
+  string.format("%%q",BOOT_TEMPLATE)
+ )
+
+ pcall(function()
+  queueFn(queuedCode)
+ end)
+end
+
+local run=loadstring(SCRIPT)
+if run then
+ run()
+end
+]====]
+
+local BOOT=string.format(
+ BOOT_TEMPLATE,
+ string.format("%q",SCRIPT),
+ string.format("%q",BOOT_TEMPLATE)
+)
+
+local run=loadstring(BOOT)
+if run then
+ run()
+end
