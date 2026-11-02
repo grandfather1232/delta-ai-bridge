@@ -35,9 +35,6 @@ local doorDone=false
 local slotBusy=false
 local characterVersion=0
 local lostAt=0
-local lastTeleportTime=0
-local teleportCooldown=2.0 -- Увеличили кулдаун до 2 секунд
-local lastTeleportPos=nil
 
 -- ====== GUI ======
 local g=Instance.new("ScreenGui")
@@ -94,55 +91,49 @@ local c=me.Character
 return c and c:FindFirstChild("HumanoidRootPart")
 end
 
--- Плавная телепортация к позиции (с задержкой)
-local function smoothTeleport(root, targetPos, speed)
+-- Ступенчатая телепортация (плавная, с фиксированным шагом)
+local function stepTeleport(root, targetPos, stepSize)
 if not root or not targetPos then return end
 
--- Проверяем кулдаун телепортации
-local now=os.clock()
-if now-lastTeleportTime < teleportCooldown then
-task.wait(teleportCooldown - (now-lastTeleportTime))
-end
+local startPos = root.Position
+local direction = (targetPos - startPos)
+local distance = direction.Magnitude
 
--- Проверяем, нужно ли вообще телепортироваться
-if lastTeleportPos and (root.Position - targetPos).Magnitude < 20 then
+if distance < stepSize then
+root.CFrame = CFrame.new(targetPos)
+root.AssemblyLinearVelocity = Vector3.zero
 return
 end
 
-lastTeleportTime=os.clock()
-lastTeleportPos=targetPos
-
-local startPos = root.Position
-local distance = (targetPos - startPos).Magnitude
-
--- Уменьшаем количество шагов еще больше
-local steps = math.max(1, math.floor(distance / 20))
+direction = direction.Unit
+local steps = math.ceil(distance / stepSize)
 
 for i = 1, steps do
 if not on then break end
 
-local alpha = i / steps
-local newPos = startPos:Lerp(targetPos, alpha)
+local newPos = startPos + direction * (stepSize * i)
+if (newPos - targetPos).Magnitude < stepSize then
+newPos = targetPos
+end
 
 root.CFrame = CFrame.new(newPos)
 root.AssemblyLinearVelocity = Vector3.zero
 
-task.wait(0.1) -- Еще больше задержка между шагами
+task.wait(0.15) -- Задержка между шагами
 end
 
 root.CFrame = CFrame.new(targetPos)
 root.AssemblyLinearVelocity = Vector3.zero
-lastTeleportTime=os.clock()
 end
 
--- Плавная телепортация к цели с поворотом
-local function smoothTeleportToTarget(root, targetPart)
+-- Плавная телепортация к цели с поворотом (расстояние 7)
+local function stepTeleportToTarget(root, targetPart)
 if not root or not targetPart then return end
 
-local targetPos = targetPart.Position - Vector3.new(0, 8, 0)
+local targetPos = targetPart.Position - Vector3.new(0, 7, 0) -- Расстояние 7
 local lookPos = targetPart.Position
 
-smoothTeleport(root, targetPos, 50)
+stepTeleport(root, targetPos, 7) -- Шаг 7
 
 if on then
 root.CFrame = CFrame.lookAt(root.Position, lookPos)
@@ -257,7 +248,6 @@ keyDone=false
 doorDone=false
 target=nil
 lostAt=0
-lastTeleportPos=nil
 end)
 
 local function startDungeon()
@@ -369,7 +359,7 @@ if not root then return false end
 interacting=true
 status.Text="GOING TO KEY"
 
-smoothTeleport(root, key.part.Position + Vector3.new(0, 2, 0), 50)
+stepTeleport(root, key.part.Position + Vector3.new(0, 2, 0), 7)
 task.wait(1)
 
 if on then
@@ -396,7 +386,7 @@ if not root then break end
 
 status.Text="GOING TO DOOR "..i
 
-smoothTeleport(root, door.part.Position + Vector3.new(0, 0, -1), 50)
+stepTeleport(root, door.part.Position + Vector3.new(0, 0, -1), 7)
 root.AssemblyLinearVelocity=Vector3.zero
 
 task.wait(3)
@@ -486,10 +476,10 @@ lostAt=0
 end
 
 if t then
--- Проверяем дистанцию перед телепортацией (увеличили порог)
+-- Проверяем дистанцию перед телепортацией
 local distance=(root.Position-t.Position).Magnitude
-if distance > 30 then -- Телепортируемся только если очень далеко
-smoothTeleportToTarget(root, t)
+if distance > 15 then -- Телепортируемся только если далеко
+stepTeleportToTarget(root, t)
 end
 end
 end)
@@ -568,7 +558,6 @@ local connChar=me.CharacterAdded:Connect(function()
 characterVersion=characterVersion+1
 target=nil
 lostAt=0
-lastTeleportPos=nil
 
 if on then
 task.spawn(function()
@@ -585,7 +574,6 @@ retryBusy=false
 keyDone=false
 doorDone=false
 lostAt=0
-lastTeleportPos=nil
 
 if follow then
 follow:Disconnect()
