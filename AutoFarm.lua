@@ -23,11 +23,9 @@ local switching=false
 local follow
 local retryBusy=false
 local startedCount=0
-
 local interacting=false
 local keyDone=false
 local doorDone=false
-local interactionToken=0
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -132,7 +130,6 @@ startedEvent.OnClientEvent:Connect(function()
  startedCount=startedCount+1
  keyDone=false
  doorDone=false
- interactionToken=interactionToken+1
  target=nil
 end)
 
@@ -165,13 +162,12 @@ local function retryLoop()
     while on and elapsed<10 do
      if startedCount>before then break end
      task.wait(.5)
-     elapsed=
-
-
-elapsed+.5
+     elapsed=elapsed+.5
     end
     if on and startedCount==before then
-     startDungeon()
+
+
+startDungeon()
     end
    else
     status.Text="RETRY ERROR"
@@ -187,9 +183,8 @@ elapsed+.5
  end
 end
 
--- Поиск ключей: используем второй найденный объект,
--- как в проверенном тесте пользователя.
-local function findWorkingKey()
+-- Находим второй объект Key, который сработал в тесте
+local function findKey()
  local keys={}
 
  for _,obj in ipairs(workspace:GetDescendants()) do
@@ -199,13 +194,8 @@ local function findWorkingKey()
     or obj:FindFirstChild("Handle",true)
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
-   if prompt and part and part:IsA("BasePart")
-   and prompt.Enabled then
-    table.insert(keys,{
-     object=obj,
-     prompt=prompt,
-     part=part
-    })
+   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+    table.insert(keys,{object=obj,prompt=prompt,part=part})
    end
   end
  end
@@ -213,8 +203,7 @@ local function findWorkingKey()
  return keys[2]
 end
 
--- Поиск замочной скважины
-local function findKeyholes()
+local function findDoors()
  local doors={}
 
  for _,obj in ipairs(workspace:GetDescendants()) do
@@ -223,12 +212,8 @@ local function findKeyholes()
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
-   if prompt and part and part:IsA("BasePart")
-   and prompt.Enabled then
-    table.insert(doors,{
-     prompt=prompt,
-     part=part
-    })
+   if prompt and part and part:IsA("BasePart") and prompt.Enabled then
+    table.insert(doors,{prompt=prompt,part=part})
    end
   end
  end
@@ -236,104 +221,79 @@ local function findKeyholes()
  return doors
 end
 
-local function collectKey()
- local key=findWorkingKey()
- if not key then return false end
-
- local root=getRoot()
- if not root then return false end
-
- interacting=true
- status.Text="GOING TO KEY"
-
- root.CFrame=key.part.CFrame*CFrame.new(0,2,0)
- task.wait(1)
-
- if not on then
-  interacting=false
-  return false
- end
-
- status.Text="PICKING KEY"
- press(Enum.KeyCode.E)
- task.wait(2)
-
- interacting=false
- return true
-end
-
-local function unlockDoors()
- local doors=findKeyholes()
- if #doors==0 then return false end
-
- interacting=true
-
- for i,door in ipairs(doors) do
-  if not on then break end
-
-  local root=getRoot()
-  if not root then break end
-
-  status.Text="GOING TO DOOR "..i
-
-  root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
-  root.AssemblyLinearVelocity=Vector3.zero
-
-  local attachment=Instance.new("Attachment")
-  attachment.Parent=root
-
-  local velocity=Instance.new("LinearVelocity")
-  velocity.Attachment0=attachment
-  velocity.MaxForce=math.huge
-  velocity.VectorVelocity=Vector3.zero
-  velocity.Parent=root
-
-  task.wait(3)
-
-  if on then
-   status.Text="UNLOCKING DOOR "..i
-
-   for attempt=1,3 do
-    if not on then break end
-    holdE(1.5)
-    task.wait(1)
-   end
-  end
-
-  velocity:Destroy()
-  attachment:Destroy()
-  task.wait(2)
- end
-
- interacting=false
- return true
-end
-
--- Автоматический подбор ключа и открытие двери
-local function interactionLoop()
- local myToken=interactionToken
-
- while on and myToken==interactionToken do
+-- Отдельный цикл ключа и двери
+local function keyDoorLoop()
+ while on do
   if not keyDone then
-   local key=findWorkingKey()
+   local key=findKey()
 
    if key then
-    local success=collectKey()
-    if success and on then
-     keyDone=true
+    interacting=true
+    status.Text="GOING TO KEY"
+
+    local root=getRoot()
+    if root then
+     root.CFrame=key.part.CFrame*CFrame.new(0,2,0)
+     task.wait(1)
+
+     if on then
+      status.Text="PICKING KEY"
+      press(Enum.KeyCode.E)
+      task.wait(2)
+      keyDone=true
+     end
     end
+
+    interacting=false
    end
+
   elseif not doorDone then
-   local doors=findKeyholes()
+   local doors=findDoors()
 
    if #doors>0 then
-    local success=unlockDoors()
-    if success and on then
+    interacting=true
+
+    for i,door in ipairs(doors) do
+     if not on then break end
+
+     local root=getRoot()
+     if not root then break end
+
+     status.Text="GOING TO DOOR "..i
+     root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
+     root.AssemblyLinearVelocity=Vector3.zero
+
+     local attachment=Instance.new("Attachment")
+     attachment.Parent=root
+
+     local velocity=Instance.new("LinearVelocity")
+     velocity.Attachment0=attachment
+     velocity.MaxForce=math.huge
+     velocity.VectorVelocity=Vector3.zero
+     velocity.Parent=root
+
+     task.wait(3)
+
+     if on then
+      status.Text="UNLOCKING DOOR "..i
+      for attempt=1,3 do
+       if not on then break end
+       holdE(1.5)
+       task.wait(1)
+      end
+     end
+
+     velocity:Destroy()
+     attachment:Destroy()
+     task.wait(2)
+    end
+
+    if on then
      doorDone=true
      status.Text="DOOR INTERACTED"
-     task.wait(2)
-     status.Text="AUTO FARM ON"
     end
+
+    interacting=false
    end
   end
 
@@ -370,12 +330,7 @@ local function startFarm()
   end
 
   if t then
-   r.CFrame=CFrame
-Orville's Ideas and Interests
-obj.Name
-
-
-.lookAt(
+   r.CFrame=CFrame.lookAt(
     t.Position-Vector3.new(0,8,0),t.Position
    )
    r.AssemblyLinearVelocity=Vector3.zero
@@ -406,7 +361,7 @@ obj.Name
  end)
 
  task.spawn(retryLoop)
- task.spawn(interactionLoop)
+ task.spawn(keyDoorLoop)
 end
 
 stop.MouseButton1Click:Connect(function()
@@ -417,7 +372,6 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
- interactionToken=interactionToken+1
  status.Text="AUTO FARM OFF"
 
  if follow then
@@ -427,6 +381,3 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 startFarm()
-
-
-
