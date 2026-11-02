@@ -27,8 +27,6 @@ local stop = Instance.new("TextButton", gui)
 stop.Size = UDim2.fromOffset(120,40)
 stop.Position = UDim2.new(0.5, -60, 0.2, 90)
 stop.Text = "STOP"
-stop.BackgroundColor3 = Color3.fromRGB(170,40,40)
-stop.TextColor3 = Color3.new(1,1,1)
 
 stop.MouseButton1Click:Connect(function()
     stopped = true
@@ -36,23 +34,13 @@ stop.MouseButton1Click:Connect(function()
 end)
 
 task.spawn(function()
-    local map = workspace:FindFirstChild("map")
-    local dungeon = map and map:FindFirstChild("halloweendungeon")
-    local dungeonMap = dungeon and dungeon:FindFirstChild("map")
-
-    if not dungeonMap then
-        label.Text = "Карта подземелья не найдена"
-        return
-    end
-
     local keys = {}
 
-    for _, obj in ipairs(dungeonMap:GetDescendants()) do
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if obj.Name:lower() == "key" then
             local prompt = obj:FindFirstChildWhichIsA(
                 "ProximityPrompt", true
             )
-
             local part = obj:FindFirstChild("Handle", true)
                 or obj:FindFirstChildWhichIsA("BasePart", true)
 
@@ -66,23 +54,21 @@ task.spawn(function()
         end
     end
 
-    label.Text = "Найдено ключей: " .. #keys
+    label.Text = "Найдено объектов: " .. #keys
+    task.wait(1)
 
     for i, data in ipairs(keys) do
         if stopped then break end
 
         if data.object:IsDescendantOf(workspace)
         and data.prompt.Enabled then
-            local character = player.Character
-            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local char = player.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
 
             if root then
-                label.Text = "Ключ " .. i .. " из " .. #keys
+                label.Text = "Проверяю ключ " .. i .. "/" .. #keys
 
-                root.CFrame = CFrame.new(
-                    data.part.Position + Vector3.new(0, 2, 0)
-                )
-
+                root.CFrame = data.part.CFrame * CFrame.new(0, 3, 0)
                 task.wait(1)
 
                 if stopped then break end
@@ -97,6 +83,6 @@ task.spawn(function()
     end
 
     if not stopped then
-        label.Text = "Проверка всех ключей завершена"
+        label.Text = "Перебор завершён"
     end
 end)
