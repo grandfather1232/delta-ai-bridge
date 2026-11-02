@@ -96,6 +96,7 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
+-- Поиск ближайшего моба используется только при выборе новой цели
 local function nearest(r)
  local folder=workspace:FindFirstChild("Mobs")
  if not folder then return nil end
@@ -121,7 +122,19 @@ local function nearest(r)
  return best
 end
 
--- Способности: мышь работает отдельно
+-- Проверка закреплённой цели
+local function isTargetAlive()
+ local folder=workspace:FindFirstChild("Mobs")
+ if not folder or not target then return false end
+ if not target:IsA("Model") then return false end
+ if target.Parent~=folder then return false end
+
+ local h=target:FindFirstChildOfClass("Humanoid")
+ local t=target:FindFirstChild("HumanoidRootPart")
+
+ return h~=nil and t~=nil and h.Health>0
+end
+
 local function attackSkills()
  press(Enum.KeyCode.F)
  press(Enum.KeyCode.F)
@@ -155,7 +168,10 @@ local function dungeonComplete()
  return true
 end
 
-startedEvent.OnClientEvent:Connect(function()
+startedEvent.OnClientEvent:Co
+
+
+nnect(function()
  startedCount=startedCount+1
  keyDone=false
  doorDone=false
@@ -361,41 +377,41 @@ local function startFarm()
 
  task.spawn(startDungeon)
 
+ local targetCheckAt=0
+
  follow=R.Heartbeat:Connect(function()
   if not on or interacting then return end
 
-  local c=me.Character
-  local root=c and c:FindFirstChild("HumanoidRootPart")
+  local root=getRoot()
   if not root then return end
 
-  local folder=workspace:FindFirstChild("Mobs")
-  local h=target and target:FindFirstChildOfClass("Humanoid")
-  local t=target and target:FindFirstChild("HumanoidRootPart")
+  – Проверяем текущую цель раз в 0.5 секунды
+  if os.clock()>=targetCheckAt then
+   targetCheckAt=os.clock()+.5
 
-  if not folder or not target
-  or not target:IsA("Model")
-  or not target:IsDescendantOf(folder)
-  or not h or not t or h.Health<=0 then
-   target=nearest(root)
-   t=target and target:FindFirstChild("HumanoidRootPart")
+   – Новую цель выбираем только если старая погибла или исчезла
+   if not isTargetAlive() then
+    target=nearest(root)
+   end
   end
 
-  if t then
+  – Продолжаем следовать только за закреплённой целью
+  if isTargetAlive() then
+   local t=target:FindFirstChild("HumanoidRootPart")
+
    root.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,8,0),t.Position
+    t.Position-Vector3.new(0,8,0),
+    t.Position
    )
+
    root.AssemblyLinearVelocity=Vector3.zero
   end
  end)
 
- -- Непрерывные клики мышью в отдельном цикле
+ – Клики мышью в отдельном цикле
  task.spawn(function()
   while on do
-   local folder=workspace:FindFirstChild("Mobs")
-
-   if not interacting and target and folder
-   and target:IsDescendantOf(folder) then
-
+   if not interacting and isTargetAlive() then
     V:SendMouseButtonEvent(0,0,0,true,game,0)
     task.wait(.3)
     V:SendMouseButtonEvent(0,0,0,false,game,0)
@@ -407,13 +423,10 @@ local function startFarm()
   V:SendMouseButtonEvent(0,0,0,false,game,0)
  end)
 
- -- Способности отдельно от кликов мыши
+ – Способности отдельно от кликов
  task.spawn(function()
   while on do
-   local folder=workspace:FindFirstChild("Mobs")
-
-   if not interacting and target and folder
-   and target:IsDescendantOf(folder) then
+   if not interacting and isTargetAlive() then
     attackSkills()
    end
 
