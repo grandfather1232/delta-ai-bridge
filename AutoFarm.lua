@@ -126,6 +126,7 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
+
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
@@ -140,9 +141,11 @@ local function dungeonComplete()
   if obj:IsA("GuiObject") and not obj.Visible then
    return false
   end
+
   if obj:IsA("ScreenGui") and not obj.Enabled then
    return false
   end
+
   obj=obj.Parent
  end
 
@@ -170,7 +173,7 @@ local function startDungeon()
  end
 end
 
--- RETRY: ЛОГИКА ИЗ СТАРОГО СКРИПТА
+-- RETRY КАК В СТАРОМ СКРИПТЕ
 
 local function retryLoop()
  while on do
@@ -219,6 +222,7 @@ local function findKey()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="key" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChild("Handle",true)
     or obj:FindFirstChildWhichIsA("BasePart",true)
@@ -238,6 +242,7 @@ local function findDoors()
  for _,obj in ipairs(workspace:GetDescendants()) do
   if obj.Name:lower()=="keyhole" then
    local prompt=obj:FindFirstChildWhichIsA("ProximityPrompt",true)
+
    local part=obj:IsA("BasePart") and obj
     or obj:FindFirstChildWhichIsA("BasePart",true)
 
