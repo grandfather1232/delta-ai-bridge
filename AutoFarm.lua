@@ -97,7 +97,7 @@ if not root or not targetPos then return end
 
 local startPos = root.Position
 local distance = (targetPos - startPos).Magnitude
-local steps = math.max(1, math.floor(distance / 5)) -- шаг ~5 стадий
+local steps = math.max(1, math.floor(distance / 5))
 
 for i = 1, steps do
 if not on then break end
@@ -108,10 +108,9 @@ local newPos = startPos:Lerp(targetPos, alpha)
 root.CFrame = CFrame.new(newPos)
 root.AssemblyLinearVelocity = Vector3.zero
 
-task.wait(0.02) -- 20мс между шагами
+task.wait(0.02)
 end
 
--- Финальная точная позиция
 root.CFrame = CFrame.new(targetPos)
 root.AssemblyLinearVelocity = Vector3.zero
 end
@@ -123,10 +122,8 @@ if not root or not targetPart then return end
 local targetPos = targetPart.Position - Vector3.new(0, 8, 0)
 local lookPos = targetPart.Position
 
--- Телепортируемся плавно
 smoothTeleport(root, targetPos, 50)
 
--- Поворачиваемся к цели
 if on then
 root.CFrame = CFrame.lookAt(root.Position, lookPos)
 root.AssemblyLinearVelocity = Vector3.zero
@@ -188,14 +185,24 @@ return best
 end
 
 local function attackSkills()
-task.wait(.4)
+-- Стартовая задержка, чтобы не совпало с ЛКМ
+task.wait(0.5)
+
+-- F (первая)
 press(Enum.KeyCode.F)
-task.wait(.4)
+task.wait(0.6)
+
+-- F (вторая)
 press(Enum.KeyCode.F)
-task.wait(.4)
+task.wait(0.6)
+
+-- C
 press(Enum.KeyCode.C)
-task.wait(.4)
+task.wait(0.6)
+
+-- V
 press(Enum.KeyCode.V)
+task.wait(0.8)
 end
 
 local function dungeonComplete()
@@ -335,7 +342,6 @@ if not root then return false end
 interacting=true
 status.Text="GOING TO KEY"
 
--- Плавная телепортация к ключу
 smoothTeleport(root, key.part.Position + Vector3.new(0, 2, 0), 50)
 task.wait(1)
 
@@ -363,7 +369,6 @@ if not root then break end
 
 status.Text="GOING TO DOOR "..i
 
--- Плавная телепортация к двери
 smoothTeleport(root, door.part.Position + Vector3.new(0, 0, -1), 50)
 root.AssemblyLinearVelocity=Vector3.zero
 
@@ -435,21 +440,18 @@ local folder=workspace:FindFirstChild("Mobs")
 local h=target and target:FindFirstChildOfClass("Humanoid")
 local t=target and target:FindFirstChild("HumanoidRootPart")
 
--- цель остаётся, пока моб в папке и не умер
 local inFolder=folder and target
 and target:IsA("Model")
 and target:IsDescendantOf(folder)
 local dead=h and h.Health<=0
 
 if inFolder and not dead and (not h or not t) then
--- моб жив, но Humanoid/HRP на миг пропал: ждём до 0.5 сек
 if lostAt==0 then lostAt=os.clock() end
 if os.clock()-lostAt<0.5 then return end
 else
 lostAt=0
 end
 
--- цель умерла/исчезла: следующую выбираем сразу
 if not inFolder or dead or not h or not t then
 target=nearest(root)
 t=target and target:FindFirstChild("HumanoidRootPart")
@@ -457,12 +459,11 @@ lostAt=0
 end
 
 if t then
--- Плавная телепортация к цели
 smoothTeleportToTarget(root, t)
 end
 end)
 
--- Непрерывные клики мышью в отдельном цикле
+-- ЛКМ: отдельный цикл
 task.spawn(function()
 while on do
 local folder=workspace:FindFirstChild("Mobs")
@@ -472,20 +473,21 @@ and target:IsDescendantOf(folder) then
 
 local x,y=aimXY()  
 V:SendMouseButtonEvent(x,y,0,true,game,0)  
-task.wait(.3)  
+task.wait(0.4)          -- удержание ЛКМ
 x,y=aimXY()  
 V:SendMouseButtonEvent(x,y,0,false,game,0)
+task.wait(0.4)          -- пауза после отпускания
 
 end
 
-task.wait(.3)
+task.wait(0.2)          -- доп. пауза
 end
 
 local x,y=aimXY()
 V:SendMouseButtonEvent(x,y,0,false,game,0)
 end)
 
--- Камера смотрит на цель
+-- Камера
 pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
 R:BindToRenderStep("AutoFarmAim",Enum.RenderPriority.Camera.Value+1,function()
 if not on or interacting then return end
@@ -498,7 +500,7 @@ cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
 end
 end)
 
--- Курсор постоянно на цели
+-- Курсор
 task.spawn(function()
 while on do
 if not interacting and target then
@@ -510,7 +512,7 @@ task.wait(.05)
 end
 end)
 
--- Способности отдельно от кликов мыши
+-- Способности: отдельный цикл со сдвигом
 task.spawn(function()
 while on do
 local folder=workspace:FindFirstChild("Mobs")
@@ -520,7 +522,7 @@ and target:IsDescendantOf(folder) then
 attackSkills()
 end
 
-task.wait(1)
+task.wait(1.5)          -- пауза между циклами способностей
 end
 end)
 
