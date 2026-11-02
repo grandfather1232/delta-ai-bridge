@@ -24,7 +24,8 @@ local startedCount=0
 local interacting=false
 local keyDone=false
 local doorDone=false
-local selecting=false
+local slotBusy=false
+local characterVersion=0
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -69,19 +70,19 @@ local function getRoot()
  return c and c:FindFirstChild("HumanoidRootPart")
 end
 
-local function selectSecondSlot()
- if selecting or not on then return end
- selecting=true
+local function selectSecondSlot(version)
+ if slotBusy or not on then return end
+ slotBusy=true
 
  task.wait(1.5)
 
- if on then
+ if on and version==characterVersion then
   status.Text="SELECTING SLOT 2"
   press(Enum.KeyCode.Two)
   task.wait(.5)
  end
 
- selecting=false
+ slotBusy=false
  if on then status.Text="AUTO FARM ON" end
 end
 
@@ -179,12 +180,12 @@ local function retryLoop()
    if ok then
     local elapsed=0
 
-    while on and elapsed<10 do
+    while on and elapsed<
+
+
+10 do
      if startedCount>before then break end
-     task
-
-
-.wait(.5)
+     task.wait(.5)
      elapsed=elapsed+.5
     end
 
@@ -345,7 +346,10 @@ local function startFarm()
  if on then return end
  on=true
 
- task.spawn(selectSecondSlot)
+ task.spawn(function()
+  selectSecondSlot(characterVersion)
+ end)
+
  task.spawn(startDungeon)
 
  follow=R.Heartbeat:Connect(function()
@@ -385,14 +389,12 @@ local function startFarm()
 end
 
 me.CharacterAdded:Connect(function()
+ characterVersion=characterVersion+1
  target=nil
-
- if on then
+  
+  if on then
   task.spawn(function()
-   task.wait(2)
-   if on then
-    selectSecondSlot()
-   end
+   selectSecondSlot(characterVersion)
   end)
  end
 end)
@@ -404,7 +406,6 @@ stop.MouseButton1Click:Connect(function()
  retryBusy=false
  keyDone=false
  doorDone=false
- selecting=false
 
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
