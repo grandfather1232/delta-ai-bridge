@@ -397,11 +397,11 @@ local function startFarm()
    and target:IsDescendantOf(folder) then
 
     V:SendMouseButtonEvent(0,0,0,true,game,0)
-    task.wait(.03)
+    task.wait(.5)
     V:SendMouseButtonEvent(0,0,0,false,game,0)
    end
 
-   task.wait(.05)
+   task.wait(.5)
   end
 
   V:SendMouseButtonEvent(0,0,0,false,game,0)
