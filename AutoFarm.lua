@@ -1,65 +1,102 @@
+local Players = game:GetService("Players")
+local VIM = game:GetService("VirtualInputManager")
 local Core = game:GetService("CoreGui")
 
+local player = Players.LocalPlayer
+local stopped = false
+
 pcall(function()
-    local old = Core:FindFirstChild("EKeyScan")
+    local old = Core:FindFirstChild("AllKeysTest")
     if old then old:Destroy() end
 end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "EKeyScan"
+gui.Name = "AllKeysTest"
 gui.ResetOnSpawn = false
 gui.Parent = Core
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0.85, 0, 0.65, 0)
-frame.Position = UDim2.new(0.075, 0, 0.15, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25,25,35)
+local label = Instance.new("TextLabel", gui)
+label.Size = UDim2.fromOffset(300, 85)
+label.Position = UDim2.new(0.5, -150, 0.2, 0)
+label.BackgroundColor3 = Color3.fromRGB(25,25,35)
+label.TextColor3 = Color3.new(1,1,1)
+label.TextSize = 15
+label.TextWrapped = true
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,35)
-title.Text = "СКАНЕР КНОПКИ E"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextSize = 16
+local stop = Instance.new("TextButton", gui)
+stop.Size = UDim2.fromOffset(120,40)
+stop.Position = UDim2.new(0.5, -60, 0.2, 90)
+stop.Text = "STOP"
+stop.BackgroundColor3 = Color3.fromRGB(170,40,40)
+stop.TextColor3 = Color3.new(1,1,1)
 
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Position = UDim2.fromOffset(5,40)
-scroll.Size = UDim2.new(1,-10,1,-45)
-scroll.BackgroundColor3 = Color3.fromRGB(35,35,45)
-scroll.ScrollBarThickness = 8
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.CanvasSize = UDim2.new(0,0,0,0)
+stop.MouseButton1Click:Connect(function()
+    stopped = true
+    label.Text = "Остановлено"
+end)
 
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0,5)
+task.spawn(function()
+    local map = workspace:FindFirstChild("map")
+    local dungeon = map and map:FindFirstChild("halloweendungeon")
+    local dungeonMap = dungeon and dungeon:FindFirstChild("map")
 
-local count = 0
-
-for _, p in ipairs(workspace:GetDescendants()) do
-    if p:IsA("ProximityPrompt")
-    and p.KeyboardKeyCode == Enum.KeyCode.E then
-
-        count += 1
-
-        local item = Instance.new("TextLabel", scroll)
-        item.Size = UDim2.new(1,-10,0,105)
-        item.BackgroundColor3 = Color3.fromRGB(50,50,65)
-        item.TextColor3 = Color3.new(1,1,1)
-        item.TextSize = 12
-        item.TextWrapped = true
-        item.TextXAlignment = Enum.TextXAlignment.Left
-        item.TextYAlignment = Enum.TextYAlignment.Top
-
-        item.Text =
-            "№ " .. count ..
-            "\nПУТЬ: " .. p:GetFullName() ..
-            "\nACTION: " .. p.ActionText ..
-            "\nOBJECT: " .. p.ObjectText ..
-            "\nENABLED: " .. tostring(p.Enabled)
+    if not dungeonMap then
+        label.Text = "Карта подземелья не найдена"
+        return
     end
-end
 
-title.Text = "НАЙДЕНО PROMPT С E: " .. count
+    local keys = {}
 
+    for _, obj in ipairs(dungeonMap:GetDescendants()) do
+        if obj.Name:lower() == "key" then
+            local prompt = obj:FindFirstChildWhichIsA(
+                "ProximityPrompt", true
+            )
 
+            local part = obj:FindFirstChild("Handle", true)
+                or obj:FindFirstChildWhichIsA("BasePart", true)
 
+            if prompt and part and part:IsA("BasePart") then
+                table.insert(keys, {
+                    object = obj,
+                    prompt = prompt,
+                    part = part
+                })
+            end
+        end
+    end
+
+    label.Text = "Найдено ключей: " .. #keys
+
+    for i, data in ipairs(keys) do
+        if stopped then break end
+
+        if data.object:IsDescendantOf(workspace)
+        and data.prompt.Enabled then
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+
+            if root then
+                label.Text = "Ключ " .. i .. " из " .. #keys
+
+                root.CFrame = CFrame.new(
+                    data.part.Position + Vector3.new(0, 2, 0)
+                )
+
+                task.wait(1)
+
+                if stopped then break end
+
+                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait(0.3)
+                VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+
+                task.wait(1)
+            end
+        end
+    end
+
+    if not stopped then
+        label.Text = "Проверка всех ключей завершена"
+    end
+end)
