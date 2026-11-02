@@ -8,21 +8,94 @@ local pg=me:WaitForChild("PlayerGui")
 
 local services=RS.ReplicatedStorage.Packages.Knit.Services
 local startRemote=services.DungeonService.RF.StartDungeon
+local voteRemote=services.PartyService.RF.VoteOn
+local startedEvent=services.DungeonService.RE.DungeonStarted
 
-local partyService=services:FindFirstChild("PartyService")
-local partyRF=partyService and partyService:FindFirstChild("RF")
-local voteRemote=partyRF and partyRF:FindFirstChild("VoteOn")
--- ИЗМЕНЁН ТОЛЬКО ПОИСК ЦЕЛИ:
--- Ищет живых мобов исключительно в Workspace.Mobs
+pcall(function()
+ local old=Core:FindFirstChild("AutoFarm")
+ if old then old:Destroy() end
+end)
+
+local on=false
+local target=nil
+local follow=nil
+local retryBusy=false
+local startedCount=0
+local interacting=false
+local keyDone=false
+local doorDone=false
+local slotBusy=false
+local characterVersion=0
+
+local g=Instance.new("ScreenGui")
+g.Name="AutoFarm"
+g.ResetOnSpawn=false
+g.Parent=Core
+
+local f=Instance.new("Frame",g)
+f.Size=UDim2.fromOffset(165,125)
+f.Position=UDim2.new(.5,-82,.5,0)
+f.BackgroundColor3=Color3.fromRGB(35,35,45)
+f.Active=true
+f.Draggable=true
+
+local status=Instance.new("TextLabel",f)
+status.Size=UDim2.new(1,0,0,25)
+status.Text="AUTO FARM ON"
+status.TextColor3=Color3.new(1,1,1)
+status.BackgroundTransparency=1
+status.TextSize=14
+
+local stop=Instance.new("TextButton",f)
+stop.Size=UDim2.new(1,-10,0,35)
+stop.Position=UDim2.fromOffset(5,65)
+stop.Text="STOP"
+stop.TextColor3=Color3.new(1,1,1)
+stop.BackgroundColor3=Color3.fromRGB(160,40,40)
+
+local function press(k)
+ V:SendKeyEvent(true,k,false,game)
+ task.wait(.12)
+ V:SendKeyEvent(false,k,false,game)
+end
+
+local function holdE(duration)
+ V:SendKeyEvent(true,Enum.KeyCode.E,false,game)
+ task.wait(duration)
+ V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
+end
+
+local function getRoot()
+ local c=me.Character
+ return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function selectSecondSlot(version)
+ if slotBusy or not on then return end
+ slotBusy=true
+
+ task.wait(1.5)
+
+ if on and version==characterVersion then
+  status.Text="SELECTING SLOT 2"
+  press(Enum.KeyCode.Two)
+  task.wait(.5)
+ end
+
+ slotBusy=false
+ if on then status.Text="AUTO FARM ON" end
+end
+
+-- ПОИСК ТОЛЬКО СРЕДИ НЕПОСРЕДСТВЕННЫХ ДЕТЕЙ WORKSPACE.MOBS
 
 local function nearest(r)
  local folder=workspace:FindFirstChild("Mobs")
- if not folder or not r then return nil end
+ if not folder then return nil end
 
  local best=nil
  local distance=math.huge
 
- for _,n in ipairs(folder:GetDescendants()) do
+ for _,n in ipairs(folder:GetChildren()) do
   if n:IsA("Model") and n~=me.Character then
    local h=n:FindFirstChildOfClass("Humanoid")
    local t=n:FindFirstChild("HumanoidRootPart")
@@ -31,13 +104,86 @@ local function nearest(r)
     local d=(r.Position-t.Position).Magnitude
 
     if d<distance then
-   local ok=false
-
-   if voteRemote and voteRemote:IsA("RemoteFunction") then
-    ok=pcall(function()
-     voteRemote:InvokeServer("Retry")
-    end)
+     best=n
+     distance=d
+    end
    end
+  end
+ end
+
+ return best
+end
+
+local function attack()
+ V:SendMouseButtonEvent(0,0,0,true,game,0)
+ task.wait(.1)
+ V:SendMouseButtonEvent(0,0,0,false,game,0)
+ press(Enum.KeyCode.F)
+ press(Enum.KeyCode.C)
+ press(Enum.KeyCode.V)
+end
+
+local function dungeonComplete()
+ local screen=pg:FindFirstChild("DungeonComplete")
+ if not screen then return false end
+ if screen:IsA("ScreenGui") and not screen.Enabled then
+  return false
+ end
+
+ local button=screen:FindFirstChild("RetryBtn",true)
+ if not button or not button:IsA("GuiObject") then
+  return false
+ end
+
+ local obj=button
+ while obj and obj~=pg do
+  if obj:IsA("GuiObject") and not obj.Visible then
+   return false
+  end
+  if obj:IsA("ScreenGui") and not obj.Enabled then
+   return false
+  end
+  obj=obj.Parent
+ end
+
+ return true
+end
+
+startedEvent.OnClientEvent:Connect(function()
+ startedCount=startedCount+1
+ keyDone=false
+ doorDone=false
+ target=nil
+end)
+
+local function startDungeon()
+ status.Text="STARTING DUNGEON"
+
+ local ok=pcall(function()
+  startRemote:InvokeServer()
+ end)
+
+ if ok then
+  status.Text="AUTO FARM ON"
+ else
+  status.Text="START ERROR"
+ end
+end
+
+local function retryLoop()
+ while on do
+  if dungeonComplete() and not retryBusy then
+   retryBusy=true
+   status.Text="RETRYING..."
+
+   local before=startedCount
+
+   local ok=pcall(function()
+    voteRemote:
+
+
+InvokeServer("Retry")
+   end)
 
    if ok then
     local elapsed=0
@@ -218,11 +364,15 @@ local function startFarm()
   local root=c and c:FindFirstChild("HumanoidRootPart")
   if not root then return end
 
+  local folder=workspace:FindFirstChild("Mobs")
+
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
 
-  if not h or not t or h.Health<=0
-  or not target:IsDescendantOf(workspace:FindFirstChild("Mobs") or workspace) then
+  if not folder or not target
+  or not target:IsA("Model")
+  or not target:IsDescendantOf(folder)
+  or not h or not t or h.Health<=0 then
    target=nearest(root)
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
@@ -237,9 +387,13 @@ local function startFarm()
 
  task.spawn(function()
   while on do
-   if not interacting and target and target.Parent then
+   local folder=workspace:FindFirstChild("Mobs")
+
+   if not interacting and target and folder
+   and target:IsDescendantOf(folder) then
     attack()
    end
+
    task.wait(1)
   end
  end)
