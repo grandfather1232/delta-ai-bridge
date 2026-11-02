@@ -86,25 +86,25 @@ local function selectSecondSlot(version)
  if on then status.Text="AUTO FARM ON" end
 end
 
--- Ищем только NPC из Workspace.Mobs
+-- Поиск только внутри Workspace.Mobs
 local function nearest(r)
  local mobs=workspace:FindFirstChild("Mobs")
  if not mobs then return nil end
 
  local best=nil
- local distance=nil
+ local distance=math.huge
 
- for _,n in ipairs(mobs:GetDescendants()) do
-  if n:IsA("Model") then
-   local h=n:FindFirstChildOfClass("Humanoid")
-   local t=n:FindFirstChild("HumanoidRootPart")
+ for _,npc in ipairs(mobs:GetDescendants()) do
+  if npc:IsA("Model") then
+   local h=npc:FindFirstChildOfClass("Humanoid")
+   local t=npc:FindFirstChild("HumanoidRootPart")
 
    if h and t and h.Health>0 then
     local d=(r.Position-t.Position).Magnitude
 
-    if not distance or d<distance then
-     best=n
+    if d<distance then
      distance=d
+     best=npc
     end
    end
   end
@@ -125,6 +125,7 @@ end
 local function dungeonComplete()
  local screen=pg:FindFirstChild("DungeonComplete")
  if not screen then return false end
+
  if screen:IsA("ScreenGui") and not screen.Enabled then
   return false
  end
@@ -363,7 +364,7 @@ local function startFarm()
   local h=target and target:FindFirstChildOfClass("Humanoid")
   local t=target and target:FindFirstChild("HumanoidRootPart")
 
-  if not h or not t or h.Health<=0 then
+  if not h or not t or h.Health<=0 or not target:IsDescendantOf(workspace:FindFirstChild("Mobs") or workspace) then
    target=nearest(root)
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
