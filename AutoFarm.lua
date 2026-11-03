@@ -1,4 +1,15 @@
 local SCRIPT = [==[
+local VERSION=1
+local env=(getgenv and getgenv()) or _G
+
+-- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
+if type(env.AutoFarmStop)=="function" then
+ pcall(env.AutoFarmStop)
+end
+
+env.AutoFarmVersion=VERSION
+env.AutoFarmJob=game.JobId
+
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
@@ -33,7 +44,7 @@ local lastPick=0
 
 -- Настройки телепорта к мобу
 local noclipEnabled=true -- можно переключать кнопкой в меню
-local aimEnabled=true    -- авто-наведение, тоже кнопкой в меню
+local aimEnabled=false   -- авто-наведение, по умолчанию выключено, включается кнопкой в меню
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
@@ -103,6 +114,14 @@ status.Text="AUTO FARM ON"
 status.TextColor3=Color3.new(1,1,1)
 status.BackgroundTransparency=1
 status.TextSize=14
+
+local ver=Instance.new("TextLabel",f)
+ver.Size=UDim2.fromOffset(30,14)
+ver.Position=UDim2.new(1,-32,0,2)
+ver.Text="v"..VERSION
+ver.TextSize=10
+ver.TextColor3=Color3.fromRGB(160,160,160)
+ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
@@ -847,6 +866,27 @@ stop.MouseButton1Click:Connect(function()
  end
 end)
 
+local function shutdown()
+ on=false
+ interacting=false
+ target=nil
+ gliding=false
+
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+ pcall(function() setNoclip(false) end)
+ pcall(releaseHold)
+
+ if follow then
+  pcall(function() follow:Disconnect() end)
+  follow=nil
+ end
+
+ pcall(function() V:SendMouseButtonEvent(0,0,0,false,game,0) end)
+ pcall(function() g:Destroy() end)
+end
+
+env.AutoFarmStop=shutdown
+
 local function refreshSpeed()
  speedLabel.Text="SPEED: "..MOVE_SPEED
 end
@@ -911,6 +951,13 @@ local BOOT_TEMPLATE = [====[
 local SCRIPT=%s
 local BOOT_TEMPLATE=%s
 
+local env=(getgenv and getgenv()) or _G
+
+if env.AutoFarmVersion then
+ if env.AutoFarmVersion>1 then return end
+ if env.AutoFarmVersion==1 and env.AutoFarmJob==game.JobId then return end
+end
+
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
 
 if queueFn then
@@ -925,9 +972,32 @@ if queueFn then
  end)
 end
 
-local run=loadstring(SCRIPT)
+local function showErr(msg)
+ warn(msg)
+
+ pcall(function()
+  local gui=Instance.new("ScreenGui")
+  gui.Name="AutoFarmError"
+  gui.Parent=game:GetService("CoreGui")
+
+  local label=Instance.new("TextLabel",gui)
+  label.Size=UDim2.new(1,0,0,60)
+  label.BackgroundColor3=Color3.fromRGB(120,20,20)
+  label.TextColor3=Color3.new(1,1,1)
+  label.TextWrapped=true
+  label.TextSize=14
+  label.Text=msg
+ end)
+end
+
+local run,err=loadstring(SCRIPT)
 if run then
- run()
+ local ok,e=pcall(run)
+ if not ok then
+  showErr("AutoFarm error: "..tostring(e))
+ end
+else
+ showErr("AutoFarm syntax error: "..tostring(err))
 end
 ]====]
 
