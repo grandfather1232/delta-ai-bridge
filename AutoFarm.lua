@@ -32,7 +32,9 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local TP_COOLDOWN=.5      -- минимум секунд между телепортами
+local TP_COOLDOWN=2       -- минимум секунд между любыми двумя телепортами
+local KILL_DELAY=1        -- пауза после смерти моба, прежде чем идти к следующему
+local ATTACK_DELAY=.6     -- пауза после телепорта, прежде чем начать бить
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
@@ -40,6 +42,7 @@ local tpTarget=nil
 local lastTP=0
 local lostAt=0
 local targetSince=0
+local killedAt=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -504,8 +507,19 @@ local function farmStep()
    end
   end
  else
-  -- цель мертва или исчезла: следующую берём сразу
+  -- цель мертва или исчезла: короткая пауза, затем следующая
   lostAt=0
+
+  if target then
+   killedAt=os.clock()
+   target=nil
+  end
+
+  if os.clock()-killedAt<KILL_DELAY then
+   dbg.Text="WAIT KILL..."
+   return
+  end
+
   target=nearest(root)
   t=mobRoot(target)
  end
@@ -536,6 +550,13 @@ local function farmStep()
  pcall(ensureHold,root)
 
  dbg.Text=target.Name.." d="..math.floor(dist).." tp="..tpCount
+end
+
+-- Бить можно только моба, к которому уже телепортировались, и не сразу после прыжка
+local function canAttack()
+ return target~=nil
+  and tpTarget==target
+  and os.clock()-lastTP>=ATTACK_DELAY
 end
 
 local function startFarm()
@@ -574,7 +595,8 @@ local function startFarm()
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
-   and target:IsDescendantOf(folder) then
+   and target:IsDescendantOf(folder)
+   and canAttack() then
 
     local x,y=mouseXY()
     V:SendMouseButtonEvent(x,y,0,true,game,0)
@@ -596,7 +618,8 @@ local function startFarm()
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
-   and target:IsDescendantOf(folder) then
+   and target:IsDescendantOf(folder)
+   and canAttack() then
     attackSkills()
    end
 
