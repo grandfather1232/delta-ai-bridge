@@ -48,6 +48,9 @@ local aimEnabled=false   -- авто-наведение, по умолчанию
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
+local STUCK_TIME=.5       -- нет продвижения столько секунд = застряли, включаем noclip
+local LONG_TIME=3         -- идём дольше стольких секунд = тоже включаем noclip
+local RESUME_DIST=6       -- продвинулись на столько studs = noclip снова выключаем
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
@@ -56,6 +59,11 @@ local lastTP=0
 local lostAt=0
 local targetSince=0
 local gliding=false
+local autoNoclip=false
+local glideStart=0
+local bestDist=math.huge
+local bestAt=0
+local enableDist=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -609,6 +617,17 @@ local function setNoclip(state)
  end
 end
 
+-- Временный noclip, включённый автоматически (когда застряли)
+local function endAuto()
+ if autoNoclip then
+  autoNoclip=false
+
+  if not noclipEnabled then
+   setNoclip(false)
+  end
+ end
+end
+
 -- Решение: какого моба бить и нужно ли к нему идти (раз в 0.2 сек)
 local function farmStep()
  local root=getRoot()
@@ -656,6 +675,7 @@ local function farmStep()
   -- цель мертва или исчезла: короткая пауза, затем следующая
   lostAt=0
   gliding=false
+  endAuto()
 
   target=nearest(root)
   t=mobRoot(target)
@@ -667,6 +687,7 @@ local function farmStep()
 
  if not t then
   gliding=false
+  endAuto()
   dbg.Text="NO TARGET"
   return
  end
@@ -678,11 +699,14 @@ local function farmStep()
  if target~=tpTarget or (not gliding and dist>REPOSITION_DIST) then
   gliding=true
   tpTarget=target
+  glideStart=os.clock()
+  bestDist=math.huge
+  bestAt=os.clock()
  end
 
  pcall(ensureHold,root)
 
- dbg.Text=target.Name.." d="..math.floor(dist)..(gliding and " GO" or " AT")
+ dbg.Text=target.Name.." d="..math.floor(dist)..(gliding and " GO" or " AT")..(autoNoclip and " NC" or "")
 end
 
 -- Плавное перемещение каждый кадр: маленькие шаги со скоростью MOVE_SPEED
@@ -700,9 +724,36 @@ local function glideStep(dt)
 
  if dist<=ARRIVE_DIST then
   gliding=false
+  endAuto()
   root.CFrame=CFrame.lookAt(desired,t.Position)
   root.AssemblyLinearVelocity=Vector3.zero
   return
+ end
+
+ -- застряли (нет продвижения) или идём слишком долго: включаем noclip
+ -- на время, пока движение не возобновится
+ local now=os.clock()
+
+ if dist<bestDist-1 then
+  bestDist=dist
+  bestAt=now
+ end
+
+ if not autoNoclip then
+  if not noclipEnabled
+  and (now-bestAt>STUCK_TIME or now-glideStart>LONG_TIME) then
+   autoNoclip=true
+   enableDist=dist
+   setNoclip(true)
+   bestDist=dist
+   bestAt=now
+  end
+ elseif enableDist-dist>=RESUME_DIST then
+  -- движение возобновилось: noclip снова выключаем
+  endAuto()
+  glideStart=now
+  bestDist=dist
+  bestAt=now
  end
 
  local step=math.min(dist,MOVE_SPEED*dt)
@@ -857,6 +908,7 @@ stop.MouseButton1Click:Connect(function()
  tpTarget=nil
  gliding=false
  pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+ autoNoclip=false
  setNoclip(false)
  releaseHold()
 
@@ -873,6 +925,7 @@ local function shutdown()
  gliding=false
 
  pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+ autoNoclip=false
  pcall(function() setNoclip(false) end)
  pcall(releaseHold)
 
@@ -916,7 +969,7 @@ noclipBtn.MouseButton1Click:Connect(function()
  refreshNoclip()
 
  if on then
-  setNoclip(noclipEnabled)
+  setNoclip(noclipEnabled or autoNoclip)
  end
 end)
 
