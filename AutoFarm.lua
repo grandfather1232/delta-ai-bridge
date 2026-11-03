@@ -33,7 +33,9 @@ local lastPick=0
 
 -- Настройки телепорта к мобу
 local noclipEnabled=true -- можно переключать кнопкой в меню
-local MOVE_SPEED=150      -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
+local aimEnabled=true    -- авто-наведение, тоже кнопкой в меню
+local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
+local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
@@ -89,7 +91,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,172)
+f.Size=UDim2.fromOffset(165,200)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -103,8 +105,8 @@ status.BackgroundTransparency=1
 status.TextSize=14
 
 local stop=Instance.new("TextButton",f)
-stop.Size=UDim2.new(1,-10,0,35)
-stop.Position=UDim2.fromOffset(5,130)
+stop.Size=UDim2.fromOffset(75,32)
+stop.Position=UDim2.fromOffset(85,160)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -146,6 +148,21 @@ noclipBtn.Position=UDim2.fromOffset(5,97)
 noclipBtn.Text="NOCLIP: ON"
 noclipBtn.TextColor3=Color3.new(1,1,1)
 noclipBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+
+local aimBtn=Instance.new("TextButton",f)
+aimBtn.Size=UDim2.new(1,-10,0,28)
+aimBtn.Position=UDim2.fromOffset(5,127)
+aimBtn.Text="AIM: ON (hold Ctrl)"
+aimBtn.TextSize=11
+aimBtn.TextColor3=Color3.new(1,1,1)
+aimBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+
+local startBtn=Instance.new("TextButton",f)
+startBtn.Size=UDim2.fromOffset(75,32)
+startBtn.Position=UDim2.fromOffset(5,160)
+startBtn.Text="START"
+startBtn.TextColor3=Color3.new(1,1,1)
+startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
 
 local function press(k)
  V:SendKeyEvent(true,k,false,game)
@@ -189,6 +206,33 @@ local function overGui()
 
  return m.X>=p.X-10 and m.X<=p.X+sz.X+10
   and m.Y>=p.Y-10 and m.Y<=p.Y+sz.Y+10
+end
+
+-- Курсор свободен: над меню или зажат левый Ctrl (чтобы дотянуться до кнопок)
+local function cursorFree()
+ return overGui() or UIS:IsKeyDown(Enum.KeyCode.LeftControl)
+end
+
+-- Экранная точка цели; без цели - текущая позиция курсора
+local function aimXY()
+ local cam=workspace.CurrentCamera
+ local t=target and target:FindFirstChild("HumanoidRootPart")
+
+ if cam and t then
+  local p=cam:WorldToViewportPoint(t.Position)
+  return p.X,p.Y
+ end
+
+ return mouseXY()
+end
+
+-- Куда кликать: на цель при включённом наведении, иначе туда, где курсор
+local function clickXY()
+ if aimEnabled and not cursorFree() then
+  return aimXY()
+ end
+
+ return mouseXY()
 end
 
 -- Экипировка второго слота
@@ -330,8 +374,8 @@ local function startDungeon()
  end
 end
 
-local function retryLoop()
- while on do
+local function retryLoop(myRun)
+ while on and myRun==runId do
   if dungeonComplete() and not retryBusy then
    retryBusy=true
    status.Text="RETRYING..."
@@ -485,8 +529,8 @@ local function unlockDoors()
  return on
 end
 
-local function keyDoorLoop()
- while on do
+local function keyDoorLoop(myRun)
+ while on and myRun==runId do
   if not keyDone then
    if findKey() then
     if collectKey() and on then
@@ -657,11 +701,13 @@ end
 local function startFarm()
  if on then return end
  on=true
+ runId=runId+1
+ local myRun=runId
  if noclipEnabled then setNoclip(true) end
 
  -- Следит, чтобы второй слот был в руках всегда (в том числе после смерти)
  task.spawn(function()
-  while on do
+  while on and myRun==runId do
    if not interacting then
     ensureSlot2()
    end
@@ -694,7 +740,7 @@ local function startFarm()
 
  -- Быстрые клики левой кнопкой в отдельном цикле
  task.spawn(function()
-  while on do
+  while on and myRun==runId do
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
@@ -702,10 +748,10 @@ local function startFarm()
    and canAttack()
    and not overGui() then
 
-    local x,y=mouseXY()
+    local x,y=clickXY()
     V:SendMouseButtonEvent(x,y,0,true,game,0)
     task.wait(.1)
-    x,y=mouseXY()
+    x,y=clickXY()
     V:SendMouseButtonEvent(x,y,0,false,game,0)
    end
 
@@ -716,9 +762,33 @@ local function startFarm()
   V:SendMouseButtonEvent(x,y,0,false,game,0)
  end)
 
+ -- Авто-наведение: камера смотрит на цель, курсор стоит на цели
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
+ R:BindToRenderStep("AutoFarmAim",Enum.RenderPriority.Camera.Value+1,function()
+  if not on or not aimEnabled or interacting then return end
+
+  local cam=workspace.CurrentCamera
+  local t=mobRoot(target)
+
+  if cam and t then
+   cam.CFrame=CFrame.lookAt(cam.CFrame.Position,t.Position)
+  end
+ end)
+
+ task.spawn(function()
+  while on and myRun==runId do
+   if aimEnabled and target and not interacting and not cursorFree() then
+    local x,y=aimXY()
+    V:SendMouseMoveEvent(x,y,game)
+   end
+
+   task.wait(.05)
+  end
+ end)
+
  -- Способности отдельно от кликов мыши
  task.spawn(function()
-  while on do
+  while on and myRun==runId do
    local folder=workspace:FindFirstChild("Mobs")
 
    if not interacting and target and folder
@@ -731,8 +801,8 @@ local function startFarm()
   end
  end)
 
- task.spawn(retryLoop)
- task.spawn(keyDoorLoop)
+ task.spawn(retryLoop,myRun)
+ task.spawn(keyDoorLoop,myRun)
 end
 
 me.CharacterAdded:Connect(function()
@@ -767,6 +837,7 @@ stop.MouseButton1Click:Connect(function()
  status.Text="AUTO FARM OFF"
  tpTarget=nil
  gliding=false
+ pcall(function() R:UnbindFromRenderStep("AutoFarmAim") end)
  setNoclip(false)
  releaseHold()
 
@@ -810,6 +881,28 @@ noclipBtn.MouseButton1Click:Connect(function()
 end)
 
 refreshNoclip()
+
+local function refreshAim()
+ if aimEnabled then
+  aimBtn.Text="AIM: ON (hold Ctrl)"
+  aimBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+ else
+  aimBtn.Text="AIM: OFF"
+  aimBtn.BackgroundColor3=Color3.fromRGB(90,90,90)
+ end
+end
+
+aimBtn.MouseButton1Click:Connect(function()
+ aimEnabled=not aimEnabled
+ refreshAim()
+end)
+
+refreshAim()
+
+startBtn.MouseButton1Click:Connect(function()
+ if on then return end
+ startFarm()
+end)
 
 startFarm()
 ]==]
