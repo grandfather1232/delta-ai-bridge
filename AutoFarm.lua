@@ -48,9 +48,9 @@ local aimEnabled=false   -- авто-наведение, по умолчанию
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
-local STUCK_TIME=.5       -- нет продвижения столько секунд = застряли, включаем noclip
-local LONG_TIME=3         -- идём дольше стольких секунд = тоже включаем noclip
-local RESUME_DIST=6       -- продвинулись на столько studs = noclip снова выключаем
+local CHECK_WINDOW=.4     -- как часто сверяем пройденный путь с ожидаемым (сек)
+local MIN_PROGRESS=.5     -- прошли меньше этой доли ожидаемого пути = застряли
+local NOCLIP_TIME=2       -- сколько секунд авто-noclip держится после включения
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
@@ -60,10 +60,11 @@ local lostAt=0
 local targetSince=0
 local gliding=false
 local autoNoclip=false
-local glideStart=0
-local bestDist=math.huge
-local bestAt=0
-local enableDist=0
+local lastGlide=0
+local winStart=0
+local winPos=nil
+local winDist=0
+local autoUntil=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -699,9 +700,7 @@ local function farmStep()
  if target~=tpTarget or (not gliding and dist>REPOSITION_DIST) then
   gliding=true
   tpTarget=target
-  glideStart=os.clock()
-  bestDist=math.huge
-  bestAt=os.clock()
+  winPos=nil
  end
 
  pcall(ensureHold,root)
@@ -730,30 +729,44 @@ local function glideStep(dt)
   return
  end
 
- -- застряли (нет продвижения) или идём слишком долго: включаем noclip
- -- на время, пока движение не возобновится
  local now=os.clock()
 
- if dist<bestDist-1 then
-  bestDist=dist
-  bestAt=now
+ -- новое окно измерения: начало движения или пауза (ключи/двери, лаг)
+ if not winPos or now-lastGlide>.5 then
+  winStart=now
+  winPos=root.Position
+  winDist=dist
  end
 
- if not autoNoclip then
-  if not noclipEnabled
-  and (now-bestAt>STUCK_TIME or now-glideStart>LONG_TIME) then
-   autoNoclip=true
-   enableDist=dist
-   setNoclip(true)
-   bestDist=dist
-   bestAt=now
+ lastGlide=now
+
+ if noclipEnabled then
+  -- noclip включён вручную: авто-логика не нужна
+  winStart=now
+  winPos=root.Position
+  winDist=dist
+ elseif autoNoclip then
+  -- авто-noclip выключаем ровно через NOCLIP_TIME секунд
+  if now>=autoUntil then
+   endAuto()
+   winStart=now
+   winPos=root.Position
+   winDist=dist
   end
- elseif enableDist-dist>=RESUME_DIST then
-  -- движение возобновилось: noclip снова выключаем
-  endAuto()
-  glideStart=now
-  bestDist=dist
-  bestAt=now
+ elseif now-winStart>=CHECK_WINDOW then
+  -- сравниваем, сколько реально прошли и сколько должны были при MOVE_SPEED
+  local moved=(root.Position-winPos).Magnitude
+  local expected=math.min(MOVE_SPEED*(now-winStart),winDist)
+
+  if expected>2 and moved<expected*MIN_PROGRESS then
+   autoNoclip=true
+   autoUntil=now+NOCLIP_TIME
+   setNoclip(true)
+  end
+
+  winStart=now
+  winPos=root.Position
+  winDist=dist
  end
 
  local step=math.min(dist,MOVE_SPEED*dt)
