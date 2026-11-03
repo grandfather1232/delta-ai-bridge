@@ -103,6 +103,15 @@ stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
 
+local dbg=Instance.new("TextLabel",f)
+dbg.Size=UDim2.new(1,-10,0,34)
+dbg.Position=UDim2.fromOffset(5,28)
+dbg.Text=""
+dbg.TextColor3=Color3.fromRGB(200,200,200)
+dbg.BackgroundTransparency=1
+dbg.TextSize=11
+dbg.TextWrapped=true
+
 local function press(k)
  V:SendKeyEvent(true,k,false,game)
  task.wait(.12)
@@ -448,6 +457,62 @@ local function keyDoorLoop()
  end
 end
 
+local tpCount=0
+
+local function farmStep()
+ local root=getRoot()
+ if not root then
+  dbg.Text="NO ROOT"
+  return
+ end
+
+ if not workspace:FindFirstChild("Mobs") then
+  dbg.Text="NO workspace.Mobs"
+  return
+ end
+
+ -- цель: ближайший живой моб; текущего меняем, только если другой
+ -- заметно ближе (иначе персонаж прыгал бы туда-сюда)
+ local best=nearest(root)
+ local cur=mobRoot(target)
+
+ if cur and best and best~=target then
+  local bt=best:FindFirstChild("HumanoidRootPart")
+  local dc=(root.Position-cur.Position).Magnitude
+  local db=bt and (root.Position-bt.Position).Magnitude or math.huge
+
+  if dc<=db+SWITCH_MARGIN then
+   best=target
+  end
+ end
+
+ target=best
+
+ local t=mobRoot(target)
+ if not t then
+  dbg.Text="NO TARGET"
+  return
+ end
+
+ -- телепорт под моба (8 studs ниже, лицом к нему) только когда нужно:
+ -- новая цель или моб ушёл дальше REPOSITION_DIST от нашей точки
+ local desired=t.Position-Vector3.new(0,8,0)
+ local dist=(root.Position-desired).Magnitude
+ local needs=(target~=tpTarget) or dist>REPOSITION_DIST
+
+ if needs and os.clock()-lastTP>=TP_COOLDOWN then
+  root.CFrame=CFrame.lookAt(desired,t.Position)
+  root.AssemblyLinearVelocity=Vector3.zero
+  tpTarget=target
+  lastTP=os.clock()
+  tpCount=tpCount+1
+ end
+
+ pcall(ensureHold,root)
+
+ dbg.Text=target.Name.." d="..math.floor(dist).." tp="..tpCount
+end
+
 local function startFarm()
  if on then return end
  on=true
@@ -472,43 +537,9 @@ local function startFarm()
   if os.clock()-lastPick<.2 then return end
   lastPick=os.clock()
 
-  local root=getRoot()
-  if not root then return end
-
-  -- цель: ближайший живой моб; текущего меняем, только если другой
-  -- заметно ближе (иначе персонаж прыгал бы туда-сюда)
-  local best=nearest(root)
-  local cur=mobRoot(target)
-
-  if cur and best and best~=target then
-   local bt=best:FindFirstChild("HumanoidRootPart")
-   local dc=(root.Position-cur.Position).Magnitude
-   local db=bt and (root.Position-bt.Position).Magnitude or math.huge
-
-   if dc<=db+SWITCH_MARGIN then
-    best=target
-   end
-  end
-
-  target=best
-
-  local t=mobRoot(target)
-
-  if t then
-   ensureHold(root)
-
-   -- телепорт под моба (8 studs ниже, лицом к нему) только когда нужно:
-   -- новая цель или моб ушёл дальше REPOSITION_DIST от нашей точки
-   local desired=t.Position-Vector3.new(0,8,0)
-   local needs=(target~=tpTarget)
-    or (root.Position-desired).Magnitude>REPOSITION_DIST
-
-   if needs and os.clock()-lastTP>=TP_COOLDOWN then
-    root.CFrame=CFrame.lookAt(desired,t.Position)
-    root.AssemblyLinearVelocity=Vector3.zero
-    tpTarget=target
-    lastTP=os.clock()
-   end
+  local ok,err=pcall(farmStep)
+  if not ok then
+   dbg.Text="ERR: "..tostring(err)
   end
  end)
 
