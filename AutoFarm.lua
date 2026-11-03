@@ -32,7 +32,7 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
+local MOVE_SPEED=100      -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
@@ -225,7 +225,7 @@ local function nearest(r,skip)
  return best
 end
 
--- Способности по очереди: пауза 0.4 перед каждой клавишей
+-- Способности по очереди: первая сразу, дальше пауза 0.4 между клавишами
 local function attackSkills()
  local keys={
   Enum.KeyCode.F,
@@ -234,9 +234,9 @@ local function attackSkills()
   Enum.KeyCode.V
  }
 
- for _,k in ipairs(keys) do
+ for i,k in ipairs(keys) do
   if not on then return end
-  task.wait(.4)
+  if i>1 then task.wait(.4) end
   press(k)
  end
 end
@@ -564,11 +564,9 @@ local function glideStep(dt)
  root.AssemblyLinearVelocity=Vector3.zero
 end
 
--- Бить можно только когда дошли до моба
+-- Бьём сразу, как только есть цель (не ждём, пока дойдём)
 local function canAttack()
  return target~=nil
-  and tpTarget==target
-  and not gliding
 end
 
 local function startFarm()
