@@ -4,6 +4,7 @@ local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
 local RS=game:GetService("ReplicatedStorage")
 local Core=game:GetService("CoreGui")
+local UIS=game:GetService("UserInputService")
 local me=P.LocalPlayer
 local pg=me:WaitForChild("PlayerGui")
 
@@ -26,6 +27,7 @@ local interacting=false
 local keyDone=false
 local doorDone=false
 local slotBusy=false
+local slot2Name=nil
 local characterVersion=0
 
 local g=Instance.new("ScreenGui")
@@ -81,15 +83,57 @@ local function getRoot()
  return c and c:FindFirstChild("HumanoidRootPart")
 end
 
-local function selectSecondSlot(version)
- if slotBusy or not on then return end
- slotBusy=true
- task.wait(1.5)
+-- Текущая позиция курсора: клики идут туда, где он уже стоит
+local function mouseXY()
+ local m=UIS:GetMouseLocation()
+ return m.X,m.Y
+end
 
- if on and version==characterVersion then
-  status.Text="SELECTING SLOT 2"
+-- Экипировка второго слота
+local function equippedTool()
+ local c=me.Character
+ return c and c:FindFirstChildOfClass("Tool")
+end
+
+local function waitTool(timeout)
+ local t0=os.clock()
+
+ while on and os.clock()-t0<timeout do
+  local tool=equippedTool()
+  if tool then return tool end
+  task.wait(.1)
+ end
+
+ return nil
+end
+
+local function ensureSlot2()
+ if slotBusy or not on then return end
+
+ local c=me.Character
+ local hum=c and c:FindFirstChildOfClass("Humanoid")
+ if not hum or hum.Health<=0 then return end
+
+ -- второй слот уже в руках: ничего не нажимаем (клавиша 2 переключает)
+ local tool=equippedTool()
+ if slot2Name and tool and tool.Name==slot2Name then return end
+
+ slotBusy=true
+ status.Text="SELECTING SLOT 2"
+
+ -- если в руках что-то другое/неизвестное, сначала убираем, чтобы 2 не снял слот
+ if tool then
+  hum:UnequipTools()
+  task.wait(.4)
+ end
+
+ if on then
   press(Enum.KeyCode.Two)
-  task.wait(.5)
+  local equipped=waitTool(1.5)
+
+  if equipped and not slot2Name then
+   slot2Name=equipped.Name
+  end
  end
 
  slotBusy=false
@@ -121,12 +165,20 @@ local function nearest(r)
  return best
 end
 
--- Способности: мышь работает отдельно
+-- Способности по очереди: пауза 0.4 перед каждой клавишей
 local function attackSkills()
- press(Enum.KeyCode.F)
- press(Enum.KeyCode.F)
- press(Enum.KeyCode.C)
- press(Enum.KeyCode.V)
+ local keys={
+  Enum.KeyCode.F,
+  Enum.KeyCode.F,
+  Enum.KeyCode.C,
+  Enum.KeyCode.V
+ }
+
+ for _,k in ipairs(keys) do
+  if not on then return end
+  task.wait(.4)
+  press(k)
+ end
 end
 
 local function dungeonComplete()
@@ -321,9 +373,7 @@ local function unlockDoors()
 
  if on then
   doorDone=true
-  status.Text="SELECTING SLOT 2"
-
-  press(Enum.KeyCode.Two)
+  ensureSlot2()
   task.wait(1)
  end
 
@@ -355,8 +405,15 @@ local function startFarm()
  if on then return end
  on=true
 
+ -- Следит, чтобы второй слот был в руках всегда (в том числе после смерти)
  task.spawn(function()
-  selectSecondSlot(characterVersion)
+  while on do
+   if not interacting then
+    ensureSlot2()
+   end
+
+   task.wait(1)
+  end
  end)
 
  task.spawn(startDungeon)
@@ -376,6 +433,7 @@ local function startFarm()
   or not target:IsA("Model")
   or not target:IsDescendantOf(folder)
   or not h or not t or h.Health<=0 then
+   target=nil
    target=nearest(root)
    t=target and target:FindFirstChild("HumanoidRootPart")
   end
@@ -388,7 +446,7 @@ local function startFarm()
   end
  end)
 
- -- Непрерывные клики мышью в отдельном цикле
+ -- Быстрые клики левой кнопкой в отдельном цикле
  task.spawn(function()
   while on do
    local folder=workspace:FindFirstChild("Mobs")
@@ -396,15 +454,18 @@ local function startFarm()
    if not interacting and target and folder
    and target:IsDescendantOf(folder) then
 
-    V:SendMouseButtonEvent(0,0,0,true,game,0)
-    task.wait(.3)
-    V:SendMouseButtonEvent(0,0,0,false,game,0)
+    local x,y=mouseXY()
+    V:SendMouseButtonEvent(x,y,0,true,game,0)
+    task.wait(.1)
+    x,y=mouseXY()
+    V:SendMouseButtonEvent(x,y,0,false,game,0)
    end
 
-   task.wait(.3)
+   task.wait(.1)
   end
 
-  V:SendMouseButtonEvent(0,0,0,false,game,0)
+  local x,y=mouseXY()
+  V:SendMouseButtonEvent(x,y,0,false,game,0)
  end)
 
  -- Способности отдельно от кликов мыши
@@ -427,11 +488,16 @@ end
 
 me.CharacterAdded:Connect(function()
  characterVersion=characterVersion+1
+ local version=characterVersion
  target=nil
 
  if on then
   task.spawn(function()
-   selectSecondSlot(characterVersion)
+   task.wait(1.5)
+
+   if on and version==characterVersion then
+    ensureSlot2()
+   end
   end)
  end
 end)
@@ -444,7 +510,8 @@ stop.MouseButton1Click:Connect(function()
  keyDone=false
  doorDone=false
 
- V:SendMouseButtonEvent(0,0,0,false,game,0)
+ local x,y=mouseXY()
+ V:SendMouseButtonEvent(x,y,0,false,game,0)
  V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
