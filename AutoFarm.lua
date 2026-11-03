@@ -32,7 +32,7 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local MOVE_SPEED=100      -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
+local MOVE_SPEED=150      -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
@@ -461,6 +461,43 @@ local function keyDoorLoop()
  end
 end
 
+-- Без столкновений: не застреваем в стенах/полу, пока бежим к мобу.
+-- Удержание на месте (ensureHold) включается там же, чтобы не провалиться.
+local noclipConn=nil
+local noclipParts={}
+
+local function setNoclip(state)
+ if state then
+  if noclipConn then return end
+
+  noclipConn=R.Stepped:Connect(function()
+   local c=me.Character
+   if not c then return end
+
+   local root=c:FindFirstChild("HumanoidRootPart")
+   if root then pcall(ensureHold,root) end
+
+   for _,part in ipairs(c:GetDescendants()) do
+    if part:IsA("BasePart") and part.CanCollide then
+     noclipParts[part]=true
+     part.CanCollide=false
+    end
+   end
+  end)
+ else
+  if noclipConn then
+   noclipConn:Disconnect()
+   noclipConn=nil
+  end
+
+  for part in pairs(noclipParts) do
+   if part.Parent then part.CanCollide=true end
+  end
+
+  noclipParts={}
+ end
+end
+
 -- Решение: какого моба бить и нужно ли к нему идти (раз в 0.2 сек)
 local function farmStep()
  local root=getRoot()
@@ -572,6 +609,7 @@ end
 local function startFarm()
  if on then return end
  on=true
+ setNoclip(true)
 
  -- Следит, чтобы второй слот был в руках всегда (в том числе после смерти)
  task.spawn(function()
@@ -680,6 +718,7 @@ stop.MouseButton1Click:Connect(function()
  status.Text="AUTO FARM OFF"
  tpTarget=nil
  gliding=false
+ setNoclip(false)
  releaseHold()
 
  if follow then
