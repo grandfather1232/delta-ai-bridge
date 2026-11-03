@@ -31,10 +31,51 @@ local slot2Name=nil
 local characterVersion=0
 local lastPick=0
 
--- Телепорт к мобу выключен. Поставь true, чтобы прыгать к нему,
--- только если ближайший моб дальше FAR_DISTANCE studs
-local TELEPORT_IF_FAR=false
-local FAR_DISTANCE=30
+-- Настройки телепорта к мобу
+local TP_COOLDOWN=.5      -- минимум секунд между телепортами
+local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
+local SWITCH_MARGIN=6     -- сменить цель, только если другой моб ближе на столько studs
+
+local tpTarget=nil
+local lastTP=0
+
+-- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
+local function mobRoot(m)
+ local folder=workspace:FindFirstChild("Mobs")
+ if not folder or not m or not m:IsA("Model") then return nil end
+ if not m:IsDescendantOf(folder) then return nil end
+
+ local h=m:FindFirstChildOfClass("Humanoid")
+ local t=m:FindFirstChild("HumanoidRootPart")
+
+ if h and t and h.Health>0 then return t end
+ return nil
+end
+
+-- Удержание на месте (нулевая скорость), чтобы не падать между телепортами
+local holdAtt=nil
+local holdVel=nil
+
+local function ensureHold(root)
+ if holdVel and holdVel.Parent==root then return end
+
+ if holdVel then holdVel:Destroy() end
+ if holdAtt then holdAtt:Destroy() end
+
+ holdAtt=Instance.new("Attachment")
+ holdAtt.Parent=root
+
+ holdVel=Instance.new("LinearVelocity")
+ holdVel.Attachment0=holdAtt
+ holdVel.MaxForce=math.huge
+ holdVel.VectorVelocity=Vector3.zero
+ holdVel.Parent=root
+end
+
+local function releaseHold()
+ if holdVel then holdVel:Destroy() holdVel=nil end
+ if holdAtt then holdAtt:Destroy() holdAtt=nil end
+end
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -427,24 +468,46 @@ local function startFarm()
  follow=R.Heartbeat:Connect(function()
   if not on or interacting then return end
 
-  -- без фиксации: раз в 0.2 сек берём ближайшего живого моба
+  -- проверка раз в 0.2 сек, а не каждый кадр
   if os.clock()-lastPick<.2 then return end
   lastPick=os.clock()
 
   local root=getRoot()
   if not root then return end
 
-  target=nearest(root)
+  -- цель: ближайший живой моб; текущего меняем, только если другой
+  -- заметно ближе (иначе персонаж прыгал бы туда-сюда)
+  local best=nearest(root)
+  local cur=mobRoot(target)
 
-  -- по желанию: один прыжок к мобу, только если он далеко
-  if TELEPORT_IF_FAR and target then
-   local t=target:FindFirstChild("HumanoidRootPart")
+  if cur and best and best~=target then
+   local bt=best:FindFirstChild("HumanoidRootPart")
+   local dc=(root.Position-cur.Position).Magnitude
+   local db=bt and (root.Position-bt.Position).Magnitude or math.huge
 
-   if t and (root.Position-t.Position).Magnitude>FAR_DISTANCE then
-    root.CFrame=CFrame.lookAt(
-     t.Position-Vector3.new(0,8,0),t.Position
-    )
+   if dc<=db+SWITCH_MARGIN then
+    best=target
+   end
+  end
+
+  target=best
+
+  local t=mobRoot(target)
+
+  if t then
+   ensureHold(root)
+
+   -- телепорт под моба (8 studs ниже, лицом к нему) только когда нужно:
+   -- новая цель или моб ушёл дальше REPOSITION_DIST от нашей точки
+   local desired=t.Position-Vector3.new(0,8,0)
+   local needs=(target~=tpTarget)
+    or (root.Position-desired).Magnitude>REPOSITION_DIST
+
+   if needs and os.clock()-lastTP>=TP_COOLDOWN then
+    root.CFrame=CFrame.lookAt(desired,t.Position)
     root.AssemblyLinearVelocity=Vector3.zero
+    tpTarget=target
+    lastTP=os.clock()
    end
   end
  end)
@@ -519,6 +582,8 @@ stop.MouseButton1Click:Connect(function()
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
  status.Text="AUTO FARM OFF"
+ tpTarget=nil
+ releaseHold()
 
  if follow then
   follow:Disconnect()
