@@ -29,6 +29,12 @@ local doorDone=false
 local slotBusy=false
 local slot2Name=nil
 local characterVersion=0
+local lastPick=0
+
+-- Телепорт к мобу выключен. Поставь true, чтобы прыгать к нему,
+-- только если ближайший моб дальше FAR_DISTANCE studs
+local TELEPORT_IF_FAR=false
+local FAR_DISTANCE=30
 
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
@@ -421,28 +427,25 @@ local function startFarm()
  follow=R.Heartbeat:Connect(function()
   if not on or interacting then return end
 
-  local c=me.Character
-  local root=c and c:FindFirstChild("HumanoidRootPart")
+  -- без фиксации: раз в 0.2 сек берём ближайшего живого моба
+  if os.clock()-lastPick<.2 then return end
+  lastPick=os.clock()
+
+  local root=getRoot()
   if not root then return end
 
-  local folder=workspace:FindFirstChild("Mobs")
-  local h=target and target:FindFirstChildOfClass("Humanoid")
-  local t=target and target:FindFirstChild("HumanoidRootPart")
+  target=nearest(root)
 
-  if not folder or not target
-  or not target:IsA("Model")
-  or not target:IsDescendantOf(folder)
-  or not h or not t or h.Health<=0 then
-   target=nil
-   target=nearest(root)
-   t=target and target:FindFirstChild("HumanoidRootPart")
-  end
+  -- по желанию: один прыжок к мобу, только если он далеко
+  if TELEPORT_IF_FAR and target then
+   local t=target:FindFirstChild("HumanoidRootPart")
 
-  if t then
-   root.CFrame=CFrame.lookAt(
-    t.Position-Vector3.new(0,8,0),t.Position
-   )
-   root.AssemblyLinearVelocity=Vector3.zero
+   if t and (root.Position-t.Position).Magnitude>FAR_DISTANCE then
+    root.CFrame=CFrame.lookAt(
+     t.Position-Vector3.new(0,8,0),t.Position
+    )
+    root.AssemblyLinearVelocity=Vector3.zero
+   end
   end
  end)
 
