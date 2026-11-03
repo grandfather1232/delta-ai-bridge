@@ -43,7 +43,7 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local noclipEnabled=true -- можно переключать кнопкой в меню
+local noclipEnabled=false -- по умолчанию выключен, включается кнопкой в меню
 local aimEnabled=false   -- авто-наведение, по умолчанию выключено, включается кнопкой в меню
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
