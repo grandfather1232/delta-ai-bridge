@@ -34,10 +34,12 @@ local lastPick=0
 -- Настройки телепорта к мобу
 local TP_COOLDOWN=.5      -- минимум секунд между телепортами
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
-local SWITCH_MARGIN=6     -- сменить цель, только если другой моб ближе на столько studs
+local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
 local tpTarget=nil
 local lastTP=0
+local lostAt=0
+local targetSince=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -196,7 +198,7 @@ local function ensureSlot2()
  if on then status.Text="AUTO FARM ON" end
 end
 
-local function nearest(r)
+local function nearest(r,skip)
  local folder=workspace:FindFirstChild("Mobs")
  if not folder then return nil end
 
@@ -204,7 +206,7 @@ local function nearest(r)
  local distance=math.huge
 
  for _,n in ipairs(folder:GetChildren()) do
-  if n:IsA("Model") and n~=me.Character then
+  if n:IsA("Model") and n~=me.Character and n~=skip then
    local h=n:FindFirstChildOfClass("Humanoid")
    local t=n:FindFirstChild("HumanoidRootPart")
 
@@ -471,24 +473,47 @@ local function farmStep()
   return
  end
 
- -- цель: ближайший живой моб; текущего меняем, только если другой
- -- заметно ближе (иначе персонаж прыгал бы туда-сюда)
- local best=nearest(root)
- local cur=mobRoot(target)
+ local prev=target
+ local t=mobRoot(target)
 
- if cur and best and best~=target then
-  local bt=best:FindFirstChild("HumanoidRootPart")
-  local dc=(root.Position-cur.Position).Magnitude
-  local db=bt and (root.Position-bt.Position).Magnitude or math.huge
+ -- моб на месте и жив, но Humanoid/HRP на миг пропал: ждём до 0.5 сек
+ if not t and target then
+  local folder=workspace:FindFirstChild("Mobs")
+  local h=target:FindFirstChildOfClass("Humanoid")
 
-  if dc<=db+SWITCH_MARGIN then
-   best=target
+  if folder and target:IsDescendantOf(folder) and (not h or h.Health>0) then
+   if lostAt==0 then lostAt=os.clock() end
+
+   if os.clock()-lostAt<.5 then
+    dbg.Text="WAIT..."
+    return
+   end
   end
  end
 
- target=best
+ if t then
+  lostAt=0
 
- local t=mobRoot(target)
+  -- моб слишком долго не умирает: переходим к другому
+  if TARGET_TIMEOUT>0 and os.clock()-targetSince>TARGET_TIMEOUT then
+   local other=nearest(root,target)
+
+   if other then
+    target=other
+    t=mobRoot(target)
+   end
+  end
+ else
+  -- цель мертва или исчезла: следующую берём сразу
+  lostAt=0
+  target=nearest(root)
+  t=mobRoot(target)
+ end
+
+ if target~=prev then
+  targetSince=os.clock()
+ end
+
  if not t then
   dbg.Text="NO TARGET"
   return
