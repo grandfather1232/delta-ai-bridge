@@ -85,6 +85,7 @@ end
 local g=Instance.new("ScreenGui")
 g.Name="AutoFarm"
 g.ResetOnSpawn=false
+g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
@@ -177,6 +178,17 @@ end
 local function mouseXY()
  local m=UIS:GetMouseLocation()
  return m.X,m.Y
+end
+
+-- Курсор над меню: автоклики на это время не шлём, иначе они мешают
+-- нажимать кнопки (+, -, NOCLIP, STOP)
+local function overGui()
+ local m=UIS:GetMouseLocation()
+ local p=f.AbsolutePosition
+ local sz=f.AbsoluteSize
+
+ return m.X>=p.X-10 and m.X<=p.X+sz.X+10
+  and m.Y>=p.Y-10 and m.Y<=p.Y+sz.Y+10
 end
 
 -- Экипировка второго слота
@@ -687,7 +699,8 @@ local function startFarm()
 
    if not interacting and target and folder
    and target:IsDescendantOf(folder)
-   and canAttack() then
+   and canAttack()
+   and not overGui() then
 
     local x,y=mouseXY()
     V:SendMouseButtonEvent(x,y,0,true,game,0)
