@@ -34,8 +34,6 @@ local lastPick=0
 -- Настройки телепорта к мобу
 local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
-local KILL_DELAY=1        -- пауза после смерти моба, прежде чем идти к следующему
-local ATTACK_DELAY=.6     -- пауза после прихода к мобу, прежде чем начать бить
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
@@ -43,9 +41,7 @@ local tpTarget=nil
 local lastTP=0
 local lostAt=0
 local targetSince=0
-local killedAt=0
 local gliding=false
-local arrivedAt=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -513,16 +509,6 @@ local function farmStep()
   lostAt=0
   gliding=false
 
-  if target then
-   killedAt=os.clock()
-   target=nil
-  end
-
-  if os.clock()-killedAt<KILL_DELAY then
-   dbg.Text="WAIT KILL..."
-   return
-  end
-
   target=nearest(root)
   t=mobRoot(target)
  end
@@ -566,7 +552,6 @@ local function glideStep(dt)
 
  if dist<=ARRIVE_DIST then
   gliding=false
-  arrivedAt=os.clock()
   root.CFrame=CFrame.lookAt(desired,t.Position)
   root.AssemblyLinearVelocity=Vector3.zero
   return
@@ -579,12 +564,11 @@ local function glideStep(dt)
  root.AssemblyLinearVelocity=Vector3.zero
 end
 
--- Бить можно только когда дошли до моба и прошла пауза ATTACK_DELAY
+-- Бить можно только когда дошли до моба
 local function canAttack()
  return target~=nil
   and tpTarget==target
   and not gliding
-  and os.clock()-arrivedAt>=ATTACK_DELAY
 end
 
 local function startFarm()
