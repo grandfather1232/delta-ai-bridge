@@ -32,6 +32,7 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
+local noclipEnabled=true -- можно переключать кнопкой в меню
 local MOVE_SPEED=150      -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
@@ -87,7 +88,7 @@ g.ResetOnSpawn=false
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,125)
+f.Size=UDim2.fromOffset(165,172)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -102,7 +103,7 @@ status.TextSize=14
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.new(1,-10,0,35)
-stop.Position=UDim2.fromOffset(5,65)
+stop.Position=UDim2.fromOffset(5,130)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -115,6 +116,35 @@ dbg.TextColor3=Color3.fromRGB(200,200,200)
 dbg.BackgroundTransparency=1
 dbg.TextSize=11
 dbg.TextWrapped=true
+
+local speedMinus=Instance.new("TextButton",f)
+speedMinus.Size=UDim2.fromOffset(35,26)
+speedMinus.Position=UDim2.fromOffset(5,65)
+speedMinus.Text="-"
+speedMinus.TextColor3=Color3.new(1,1,1)
+speedMinus.BackgroundColor3=Color3.fromRGB(60,60,80)
+
+local speedLabel=Instance.new("TextLabel",f)
+speedLabel.Size=UDim2.fromOffset(75,26)
+speedLabel.Position=UDim2.fromOffset(45,65)
+speedLabel.Text="SPEED: "..MOVE_SPEED
+speedLabel.TextColor3=Color3.new(1,1,1)
+speedLabel.BackgroundTransparency=1
+speedLabel.TextSize=12
+
+local speedPlus=Instance.new("TextButton",f)
+speedPlus.Size=UDim2.fromOffset(35,26)
+speedPlus.Position=UDim2.fromOffset(125,65)
+speedPlus.Text="+"
+speedPlus.TextColor3=Color3.new(1,1,1)
+speedPlus.BackgroundColor3=Color3.fromRGB(60,60,80)
+
+local noclipBtn=Instance.new("TextButton",f)
+noclipBtn.Size=UDim2.new(1,-10,0,28)
+noclipBtn.Position=UDim2.fromOffset(5,97)
+noclipBtn.Text="NOCLIP: ON"
+noclipBtn.TextColor3=Color3.new(1,1,1)
+noclipBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
 
 local function press(k)
  V:SendKeyEvent(true,k,false,game)
@@ -462,33 +492,39 @@ local function keyDoorLoop()
 end
 
 -- Без столкновений: не застреваем в стенах/полу, пока бежим к мобу.
--- Удержание на месте (ensureHold) включается там же, чтобы не провалиться.
-local noclipConn=nil
+-- Отключаем CanCollide и на Stepped, и на Heartbeat, чтобы игра не успела
+-- вернуть его. Удержание на месте (ensureHold) включается там же,
+-- чтобы без столкновений не провалиться вниз.
+local noclipConns={}
 local noclipParts={}
+
+local function applyNoclip()
+ local c=me.Character
+ if not c then return end
+
+ local root=c:FindFirstChild("HumanoidRootPart")
+ if root then pcall(ensureHold,root) end
+
+ for _,part in ipairs(c:GetDescendants()) do
+  if part:IsA("BasePart") and part.CanCollide then
+   noclipParts[part]=true
+   part.CanCollide=false
+  end
+ end
+end
 
 local function setNoclip(state)
  if state then
-  if noclipConn then return end
+  if #noclipConns>0 then return end
 
-  noclipConn=R.Stepped:Connect(function()
-   local c=me.Character
-   if not c then return end
-
-   local root=c:FindFirstChild("HumanoidRootPart")
-   if root then pcall(ensureHold,root) end
-
-   for _,part in ipairs(c:GetDescendants()) do
-    if part:IsA("BasePart") and part.CanCollide then
-     noclipParts[part]=true
-     part.CanCollide=false
-    end
-   end
-  end)
+  noclipConns[1]=R.Stepped:Connect(applyNoclip)
+  noclipConns[2]=R.Heartbeat:Connect(applyNoclip)
  else
-  if noclipConn then
-   noclipConn:Disconnect()
-   noclipConn=nil
+  for _,conn in ipairs(noclipConns) do
+   conn:Disconnect()
   end
+
+  noclipConns={}
 
   for part in pairs(noclipParts) do
    if part.Parent then part.CanCollide=true end
@@ -609,7 +645,7 @@ end
 local function startFarm()
  if on then return end
  on=true
- setNoclip(true)
+ if noclipEnabled then setNoclip(true) end
 
  -- Следит, чтобы второй слот был в руках всегда (в том числе после смерти)
  task.spawn(function()
@@ -726,6 +762,41 @@ stop.MouseButton1Click:Connect(function()
   follow=nil
  end
 end)
+
+local function refreshSpeed()
+ speedLabel.Text="SPEED: "..MOVE_SPEED
+end
+
+speedMinus.MouseButton1Click:Connect(function()
+ MOVE_SPEED=math.max(25,MOVE_SPEED-25)
+ refreshSpeed()
+end)
+
+speedPlus.MouseButton1Click:Connect(function()
+ MOVE_SPEED=math.min(300,MOVE_SPEED+25)
+ refreshSpeed()
+end)
+
+local function refreshNoclip()
+ if noclipEnabled then
+  noclipBtn.Text="NOCLIP: ON"
+  noclipBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+ else
+  noclipBtn.Text="NOCLIP: OFF"
+  noclipBtn.BackgroundColor3=Color3.fromRGB(90,90,90)
+ end
+end
+
+noclipBtn.MouseButton1Click:Connect(function()
+ noclipEnabled=not noclipEnabled
+ refreshNoclip()
+
+ if on then
+  setNoclip(noclipEnabled)
+ end
+end)
+
+refreshNoclip()
 
 startFarm()
 ]==]
