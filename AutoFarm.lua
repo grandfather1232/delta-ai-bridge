@@ -32,9 +32,10 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local TP_COOLDOWN=2       -- минимум секунд между любыми двумя телепортами
+local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
+local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local KILL_DELAY=1        -- пауза после смерти моба, прежде чем идти к следующему
-local ATTACK_DELAY=.6     -- пауза после телепорта, прежде чем начать бить
+local ATTACK_DELAY=.6     -- пауза после прихода к мобу, прежде чем начать бить
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
@@ -43,6 +44,8 @@ local lastTP=0
 local lostAt=0
 local targetSince=0
 local killedAt=0
+local gliding=false
+local arrivedAt=0
 
 -- Возвращает HumanoidRootPart моба, если он жив и лежит в workspace.Mobs
 local function mobRoot(m)
@@ -462,8 +465,7 @@ local function keyDoorLoop()
  end
 end
 
-local tpCount=0
-
+-- Решение: какого моба бить и нужно ли к нему идти (раз в 0.2 сек)
 local function farmStep()
  local root=getRoot()
  if not root then
@@ -509,6 +511,7 @@ local function farmStep()
  else
   -- цель мертва или исчезла: короткая пауза, затем следующая
   lostAt=0
+  gliding=false
 
   if target then
    killedAt=os.clock()
@@ -529,34 +532,59 @@ local function farmStep()
  end
 
  if not t then
+  gliding=false
   dbg.Text="NO TARGET"
   return
  end
 
- -- телепорт под моба (8 studs ниже, лицом к нему) только когда нужно:
- -- новая цель или моб ушёл дальше REPOSITION_DIST от нашей точки
+ -- идти к мобу: новая цель или моб ушёл дальше REPOSITION_DIST
  local desired=t.Position-Vector3.new(0,8,0)
  local dist=(root.Position-desired).Magnitude
- local needs=(target~=tpTarget) or dist>REPOSITION_DIST
 
- if needs and os.clock()-lastTP>=TP_COOLDOWN then
-  root.CFrame=CFrame.lookAt(desired,t.Position)
-  root.AssemblyLinearVelocity=Vector3.zero
+ if target~=tpTarget or (not gliding and dist>REPOSITION_DIST) then
+  gliding=true
   tpTarget=target
-  lastTP=os.clock()
-  tpCount=tpCount+1
  end
 
  pcall(ensureHold,root)
 
- dbg.Text=target.Name.." d="..math.floor(dist).." tp="..tpCount
+ dbg.Text=target.Name.." d="..math.floor(dist)..(gliding and " GO" or " AT")
 end
 
--- Бить можно только моба, к которому уже телепортировались, и не сразу после прыжка
+-- Плавное перемещение каждый кадр: маленькие шаги со скоростью MOVE_SPEED
+-- вместо одного далёкого телепорта. Когда дошли, ничего не пишем.
+local function glideStep(dt)
+ if not gliding then return end
+
+ local root=getRoot()
+ local t=mobRoot(target)
+ if not root or not t then return end
+
+ local desired=t.Position-Vector3.new(0,8,0)
+ local offset=desired-root.Position
+ local dist=offset.Magnitude
+
+ if dist<=ARRIVE_DIST then
+  gliding=false
+  arrivedAt=os.clock()
+  root.CFrame=CFrame.lookAt(desired,t.Position)
+  root.AssemblyLinearVelocity=Vector3.zero
+  return
+ end
+
+ local step=math.min(dist,MOVE_SPEED*dt)
+ local newPos=root.Position+offset.Unit*step
+
+ root.CFrame=CFrame.lookAt(newPos,t.Position)
+ root.AssemblyLinearVelocity=Vector3.zero
+end
+
+-- Бить можно только когда дошли до моба и прошла пауза ATTACK_DELAY
 local function canAttack()
  return target~=nil
   and tpTarget==target
-  and os.clock()-lastTP>=ATTACK_DELAY
+  and not gliding
+  and os.clock()-arrivedAt>=ATTACK_DELAY
 end
 
 local function startFarm()
@@ -576,16 +604,23 @@ local function startFarm()
 
  task.spawn(startDungeon)
 
- follow=R.Heartbeat:Connect(function()
+ follow=R.Heartbeat:Connect(function(dt)
   if not on or interacting then return end
 
-  -- проверка раз в 0.2 сек, а не каждый кадр
-  if os.clock()-lastPick<.2 then return end
-  lastPick=os.clock()
+  -- решение о цели раз в 0.2 сек
+  if os.clock()-lastPick>=.2 then
+   lastPick=os.clock()
 
-  local ok,err=pcall(farmStep)
-  if not ok then
-   dbg.Text="ERR: "..tostring(err)
+   local ok,err=pcall(farmStep)
+   if not ok then
+    dbg.Text="ERR: "..tostring(err)
+   end
+  end
+
+  -- плавный шаг к мобу каждый кадр, пока идём
+  local ok2,err2=pcall(glideStep,math.min(dt,.1))
+  if not ok2 then
+   dbg.Text="ERR: "..tostring(err2)
   end
  end)
 
@@ -662,6 +697,7 @@ stop.MouseButton1Click:Connect(function()
 
  status.Text="AUTO FARM OFF"
  tpTarget=nil
+ gliding=false
  releaseHold()
 
  if follow then
