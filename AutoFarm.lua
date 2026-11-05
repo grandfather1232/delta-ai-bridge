@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=6
+local VERSION=7
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -27,7 +27,9 @@ local settings={
  remote=true,     -- ключи и двери берём без телепорта (запасной способ: с телепортом)
  buff=true,       -- авто-выбор баффов после зачистки
  buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
- buffGui=""       -- имя окна баффов (запоминается после первого успешного выбора)
+ buffGui="",      -- имя окна баффов (запоминается после первого успешного выбора)
+ xpBoost=false,   -- XP x10 boost
+ rewardBoost=false -- дополнительные награды
 }
 
 local function loadSettings()
@@ -155,6 +157,69 @@ local NOCLIP_TIME=2       -- сколько секунд авто-noclip дер�
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
+-- XP и награды
+local xpBoostEnabled=settings.xpBoost
+local rewardBoostEnabled=settings.rewardBoost
+
+-- Функции для XP x10 и наград
+local function activateXpBoost()
+ if not xpBoostEnabled then return end
+ status.Text="XP BOOST ACTIVE"
+ -- Здесь должен быть код для активации XP x10
+ -- Это может быть вызов remote события, покупка буста, или что-то подобное
+ -- В зависимости от игры, это может быть:
+ -- 1. Вызов remote для активации буста
+ -- 2. Использование предмета из инвентаря
+ -- 3. Нажатие кнопки в GUI
+ -- Пример:
+ pcall(function()
+  -- Попытка найти и использовать буст XP
+  local backpack=me:FindFirstChild("Backpack")
+  if backpack then
+   for _,item in ipairs(backpack:GetChildren()) do
+    if item.Name:lower():find("xp") or item.Name:lower():find("boost") then
+     -- Активируем предмет
+     item.Parent=me.Character
+     task.wait(0.1)
+     item.Parent=backpack
+    end
+   end
+  end
+ end)
+end
+
+local function activateRewardBoost()
+ if not rewardBoostEnabled then return end
+ status.Text="REWARD BOOST ACTIVE"
+ -- Здесь должен быть код для активации дополнительных наград
+ -- Это может быть вызов remote события, покупка буста, или что-то подобное
+ -- Пример:
+ pcall(function()
+  -- Попытка найти и использовать буст наград
+  local backpack=me:FindFirstChild("Backpack")
+  if backpack then
+   for _,item in ipairs(backpack:GetChildren()) do
+    if item.Name:lower():find("reward") or item.Name:lower():find("loot") then
+     -- Активируем предмет
+     item.Parent=me.Character
+     task.wait(0.1)
+     item.Parent=backpack
+    end
+   end
+  end
+ end)
+end
+
+-- Вызов бустов при старте подземелья
+local function activateBoosts()
+ if xpBoostEnabled then
+  task.spawn(activateXpBoost)
+ end
+ if rewardBoostEnabled then
+  task.spawn(activateRewardBoost)
+ end
+end
+
 local tpTarget=nil
 local lastTP=0
 local lostAt=0
@@ -212,7 +277,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,320)
+f.Size=UDim2.fromOffset(165,380)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -235,7 +300,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,280)
+stop.Position=UDim2.fromOffset(85,340)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -252,11 +317,11 @@ dbg.TextWrapped=true
 -- Прокручиваемая область с настройками (меню не вылезает за экран)
 local body=Instance.new("ScrollingFrame",f)
 body.Position=UDim2.fromOffset(0,65)
-body.Size=UDim2.new(1,0,0,210)
+body.Size=UDim2.new(1,0,0,270)
 body.BackgroundTransparency=1
 body.BorderSizePixel=0
 body.ScrollBarThickness=4
-body.CanvasSize=UDim2.new(0,0,0,362)
+body.CanvasSize=UDim2.new(0,0,0,430)
 
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
@@ -305,11 +370,13 @@ local modeBtn=makeToggle(210)
 local pickBtn=makeToggle(240)
 local buffBtn=makeToggle(270)
 local buffMinus,buffLabel,buffPlus=makeRow(300)
-local scanBtn=makeToggle(330)
+local xpBtn=makeToggle(330)
+local rewardBtn=makeToggle(360)
+local scanBtn=makeToggle(390)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,280)
+startBtn.Position=UDim2.fromOffset(5,340)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -530,6 +597,8 @@ task.spawn(function()
     keyDone=false
     doorDone=false
     target=nil
+    -- Активируем бусты при старте подземелья
+    activateBoosts()
    end)
   end)
 
@@ -547,6 +616,7 @@ local function startDungeon()
 
  if ok then
   status.Text="AUTO FARM ON"
+  activateBoosts()
  else
   status.Text="START ERROR"
  end
@@ -1662,6 +1732,42 @@ buffPlus.MouseButton1Click:Connect(function()
  changeBuffPick(buffPick+1)
 end)
 
+-- XP Boost toggle
+local function refreshXp()
+ if xpBoostEnabled then
+  xpBtn.Text="XP x10: ВКЛ"
+  xpBtn.BackgroundColor3=ON_COLOR
+ else
+  xpBtn.Text="XP x10: ВЫКЛ"
+  xpBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+xpBtn.MouseButton1Click:Connect(function()
+ xpBoostEnabled=not xpBoostEnabled
+ settings.xpBoost=xpBoostEnabled
+ saveSettings()
+ refreshXp()
+end)
+
+-- Reward Boost toggle
+local function refreshReward()
+ if rewardBoostEnabled then
+  rewardBtn.Text="НАГРАДЫ: ВКЛ"
+  rewardBtn.BackgroundColor3=ON_COLOR
+ else
+  rewardBtn.Text="НАГРАДЫ: ВЫКЛ"
+  rewardBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+rewardBtn.MouseButton1Click:Connect(function()
+ rewardBoostEnabled=not rewardBoostEnabled
+ settings.rewardBoost=rewardBoostEnabled
+ saveSettings()
+ refreshReward()
+end)
+
 scanBtn.Text="СКАН ОКОН (отладка)"
 scanBtn.BackgroundColor3=Color3.fromRGB(60,60,80)
 
@@ -1745,6 +1851,8 @@ refreshMode()
 refreshPick()
 refreshBuff()
 refreshBuffPick()
+refreshXp()
+refreshReward()
 
 startFarm()
 ]==]
@@ -1756,8 +1864,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>6 then return end
- if env.AutoFarmVersion==6 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>7 then return end
+ if env.AutoFarmVersion==7 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
