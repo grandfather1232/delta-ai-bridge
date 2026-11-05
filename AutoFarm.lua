@@ -28,8 +28,8 @@ local settings={
  buff=true,       -- авто-выбор баффов после зачистки
  buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
  buffGui="",      -- имя окна баффов (запоминается после первого успешного выбора)
- xpBoost=false,   -- XP x10 boost
- rewardBoost=false -- дополнительные награды
+ damageMult=2,    -- множитель урона (1 = обычный, 2 = x2, 3 = x3 и т.д.)
+ damageEnabled=true -- включить множитель урона
 }
 
 local function loadSettings()
@@ -60,6 +60,7 @@ local function loadSettings()
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
  settings.buffPick=math.floor(math.clamp(settings.buffPick,1,4))
+ settings.damageMult=math.clamp(settings.damageMult,1,100)
 end
 
 local function saveSettings()
@@ -157,68 +158,9 @@ local NOCLIP_TIME=2       -- сколько секунд авто-noclip дер�
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
--- XP и награды
-local xpBoostEnabled=settings.xpBoost
-local rewardBoostEnabled=settings.rewardBoost
-
--- Функции для XP x10 и наград
-local function activateXpBoost()
- if not xpBoostEnabled then return end
- status.Text="XP BOOST ACTIVE"
- -- Здесь должен быть код для активации XP x10
- -- Это может быть вызов remote события, покупка буста, или что-то подобное
- -- В зависимости от игры, это может быть:
- -- 1. Вызов remote для активации буста
- -- 2. Использование предмета из инвентаря
- -- 3. Нажатие кнопки в GUI
- -- Пример:
- pcall(function()
-  -- Попытка найти и использовать буст XP
-  local backpack=me:FindFirstChild("Backpack")
-  if backpack then
-   for _,item in ipairs(backpack:GetChildren()) do
-    if item.Name:lower():find("xp") or item.Name:lower():find("boost") then
-     -- Активируем предмет
-     item.Parent=me.Character
-     task.wait(0.1)
-     item.Parent=backpack
-    end
-   end
-  end
- end)
-end
-
-local function activateRewardBoost()
- if not rewardBoostEnabled then return end
- status.Text="REWARD BOOST ACTIVE"
- -- Здесь должен быть код для активации дополнительных наград
- -- Это может быть вызов remote события, покупка буста, или что-то подобное
- -- Пример:
- pcall(function()
-  -- Попытка найти и использовать буст наград
-  local backpack=me:FindFirstChild("Backpack")
-  if backpack then
-   for _,item in ipairs(backpack:GetChildren()) do
-    if item.Name:lower():find("reward") or item.Name:lower():find("loot") then
-     -- Активируем предмет
-     item.Parent=me.Character
-     task.wait(0.1)
-     item.Parent=backpack
-    end
-   end
-  end
- end)
-end
-
--- Вызов бустов при старте подземелья
-local function activateBoosts()
- if xpBoostEnabled then
-  task.spawn(activateXpBoost)
- end
- if rewardBoostEnabled then
-  task.spawn(activateRewardBoost)
- end
-end
+-- НОВОЕ: настройки множителя урона
+local damageMult=settings.damageMult -- множитель урона (1 = обычный, 2 = x2 и т.д.)
+local damageEnabled=settings.damageEnabled -- включить/выключить множитель урона
 
 local tpTarget=nil
 local lastTP=0
@@ -277,7 +219,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,380)
+f.Size=UDim2.fromOffset(165,380) -- увеличен размер для новых кнопок
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -321,7 +263,7 @@ body.Size=UDim2.new(1,0,0,270)
 body.BackgroundTransparency=1
 body.BorderSizePixel=0
 body.ScrollBarThickness=4
-body.CanvasSize=UDim2.new(0,0,0,430)
+body.CanvasSize=UDim2.new(0,0,0,422) -- увеличен размер для новых элементов
 
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
@@ -370,9 +312,10 @@ local modeBtn=makeToggle(210)
 local pickBtn=makeToggle(240)
 local buffBtn=makeToggle(270)
 local buffMinus,buffLabel,buffPlus=makeRow(300)
-local xpBtn=makeToggle(330)
-local rewardBtn=makeToggle(360)
-local scanBtn=makeToggle(390)
+local scanBtn=makeToggle(330)
+-- НОВОЕ: элементы для множителя урона
+local dmgBtn=makeToggle(360)
+local dmgMinus,dmgLabel,dmgPlus=makeRow(390)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
@@ -515,6 +458,50 @@ local function ensureSlot()
  if on then status.Text="AUTO FARM ON" end
 end
 
+-- НОВОЕ: функция применения множителя урона
+local function applyDamageMultiplier()
+ if not damageEnabled or damageMult<=1 then return end
+
+ -- Пытаемся найти и изменить урон оружия
+ local tool=equippedTool()
+ if not tool then return end
+
+ -- Проверяем разные возможные места хранения урона
+ local damageValues={}
+ 
+ -- Ищем все значения урона в инструменте
+ for _,obj in ipairs(tool:GetDescendants()) do
+  if obj:IsA("NumberValue") or obj:IsA("IntValue") then
+   local name=obj.Name:lower()
+   if name:find("damage") or name:find("dmg") or name:find("урон") then
+    table.insert(damageValues,obj)
+   end
+  end
+ end
+
+ -- Если нашли значения урона, умножаем их
+ for _,dmg in ipairs(damageValues) do
+  dmg.Value=dmg.Value*damageMult
+ end
+
+ -- Также пытаемся найти и изменить урон через RemoteEvent/RemoteFunction
+ -- Это может не работать во всех играх, но попробуем
+ local toolDamage=tool:FindFirstChild("Damage")
+ if toolDamage and toolDamage:IsA("NumberValue") then
+  toolDamage.Value=toolDamage.Value*damageMult
+ end
+end
+
+-- НОВОЕ: функция для постоянного применения множителя (вызывается периодически)
+local function damageLoop(myRun)
+ while on and myRun==runId do
+  if damageEnabled and damageMult>1 then
+   pcall(applyDamageMultiplier)
+  end
+  task.wait(2) -- проверяем каждые 2 секунды
+ end
+end
+
 local function nearest(r,skip)
  local folder=workspace:FindFirstChild("Mobs")
  if not folder then return nil end
@@ -597,8 +584,6 @@ task.spawn(function()
     keyDone=false
     doorDone=false
     target=nil
-    -- Активируем бусты при старте подземелья
-    activateBoosts()
    end)
   end)
 
@@ -616,7 +601,6 @@ local function startDungeon()
 
  if ok then
   status.Text="AUTO FARM ON"
-  activateBoosts()
  else
   status.Text="START ERROR"
  end
@@ -1500,6 +1484,7 @@ local function startFarm()
  task.spawn(retryLoop,myRun)
  task.spawn(buffLoop,myRun)
  task.spawn(keyDoorLoop,myRun)
+ task.spawn(damageLoop,myRun) -- НОВОЕ: запускаем цикл множителя урона
 end
 
 me.CharacterAdded:Connect(function()
@@ -1513,6 +1498,9 @@ me.CharacterAdded:Connect(function()
 
    if on and version==characterVersion then
     ensureSlot()
+    if damageEnabled then
+     pcall(applyDamageMultiplier)
+    end
    end
   end)
  end
@@ -1732,42 +1720,6 @@ buffPlus.MouseButton1Click:Connect(function()
  changeBuffPick(buffPick+1)
 end)
 
--- XP Boost toggle
-local function refreshXp()
- if xpBoostEnabled then
-  xpBtn.Text="XP x10: ВКЛ"
-  xpBtn.BackgroundColor3=ON_COLOR
- else
-  xpBtn.Text="XP x10: ВЫКЛ"
-  xpBtn.BackgroundColor3=OFF_COLOR
- end
-end
-
-xpBtn.MouseButton1Click:Connect(function()
- xpBoostEnabled=not xpBoostEnabled
- settings.xpBoost=xpBoostEnabled
- saveSettings()
- refreshXp()
-end)
-
--- Reward Boost toggle
-local function refreshReward()
- if rewardBoostEnabled then
-  rewardBtn.Text="НАГРАДЫ: ВКЛ"
-  rewardBtn.BackgroundColor3=ON_COLOR
- else
-  rewardBtn.Text="НАГРАДЫ: ВЫКЛ"
-  rewardBtn.BackgroundColor3=OFF_COLOR
- end
-end
-
-rewardBtn.MouseButton1Click:Connect(function()
- rewardBoostEnabled=not rewardBoostEnabled
- settings.rewardBoost=rewardBoostEnabled
- saveSettings()
- refreshReward()
-end)
-
 scanBtn.Text="СКАН ОКОН (отладка)"
 scanBtn.BackgroundColor3=Color3.fromRGB(60,60,80)
 
@@ -1835,6 +1787,52 @@ stuckBtn.MouseButton1Click:Connect(function()
  end
 end)
 
+-- НОВОЕ: функции для множителя урона
+local function refreshDmg()
+ if damageEnabled then
+  dmgBtn.Text="УРОН x"..damageMult..": ВКЛ"
+  dmgBtn.BackgroundColor3=ON_COLOR
+ else
+  dmgBtn.Text="УРОН x"..damageMult..": ВЫКЛ"
+  dmgBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+dmgBtn.MouseButton1Click:Connect(function()
+ damageEnabled=not damageEnabled
+ settings.damageEnabled=damageEnabled
+ saveSettings()
+ refreshDmg()
+
+ if on and damageEnabled then
+  pcall(applyDamageMultiplier)
+ end
+end)
+
+local function refreshDmgMult()
+ dmgLabel.Text="МНОЖ: x"..damageMult
+end
+
+local function changeDmgMult(value)
+ damageMult=math.clamp(value,1,100)
+ settings.damageMult=damageMult
+ saveSettings()
+ refreshDmgMult()
+ refreshDmg()
+
+ if on and damageEnabled then
+  pcall(applyDamageMultiplier)
+ end
+end
+
+dmgMinus.MouseButton1Click:Connect(function()
+ changeDmgMult(damageMult-1)
+end)
+
+dmgPlus.MouseButton1Click:Connect(function()
+ changeDmgMult(damageMult+1)
+end)
+
 startBtn.MouseButton1Click:Connect(function()
  if on then return end
  startFarm()
@@ -1851,8 +1849,8 @@ refreshMode()
 refreshPick()
 refreshBuff()
 refreshBuffPick()
-refreshXp()
-refreshReward()
+refreshDmg() -- НОВОЕ: обновляем отображение множителя урона
+refreshDmgMult() -- НОВОЕ: обновляем отображение множителя
 
 startFarm()
 ]==]
