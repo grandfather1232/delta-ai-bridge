@@ -23,7 +23,8 @@ local settings={
  height=-8,       -- высота относительно моба (минус = ниже)
  dist=0,          -- расстояние от моба (плюс = впереди, минус = сзади)
  slot=2,          -- какой слот держать в руках (1-9)
- tp=false         -- false = ходьба к мобу, true = мгновенный телепорт
+ tp=false,        -- false = ходьба к мобу, true = мгновенный телепорт
+ remote=true      -- ключи и двери берём без телепорта (запасной способ: с телепортом)
 }
 
 local function loadSettings()
@@ -117,6 +118,7 @@ local noclipEnabled=settings.noclip -- ручной noclip, кнопка в ме
 local aimEnabled=settings.aim       -- авто-наведение, кнопка в меню
 local antiStuckEnabled=settings.antiStuck -- антизастревание, кнопка в меню
 local teleportMode=settings.tp    -- false = ходьба, true = телепорт, кнопка в меню
+local remotePick=settings.remote  -- подбор ключей и дверей без телепорта, кнопка в меню
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
 local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
@@ -185,7 +187,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,348)
+f.Size=UDim2.fromOffset(165,378)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -208,7 +210,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,305)
+stop.Position=UDim2.fromOffset(85,335)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -266,10 +268,11 @@ local aimBtn=makeToggle(185)
 local stuckBtn=makeToggle(215)
 local slotMinus,slotLabel,slotPlus=makeRow(245)
 local modeBtn=makeToggle(275)
+local pickBtn=makeToggle(305)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,305)
+startBtn.Position=UDim2.fromOffset(5,335)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -564,10 +567,48 @@ local function findDoors()
  return doors
 end
 
+-- Использовать ProximityPrompt прямо на расстоянии, без телепорта и без нажатия E.
+-- Возвращает true, если после нажатия подсказка исчезла/выключилась (ключ взят,
+-- дверь открыта). Если не вышло, вызывающий код использует старый способ с телепортом.
+local function remoteUse(entry)
+ if not remotePick or not fireproximityprompt then return false end
+
+ local prompt=entry.prompt
+ local part=entry.part
+
+ for attempt=1,3 do
+  if not on then return false end
+
+  pcall(function()
+   prompt.HoldDuration=0
+   fireproximityprompt(prompt)
+  end)
+
+  task.wait(.6)
+
+  if not prompt.Parent or not prompt.Enabled or not part.Parent then
+   return true
+  end
+ end
+
+ return false
+end
+
 local function collectKey()
  local key=findKey()
  if not key then return false end
 
+ -- без телепорта: берём ключ прямо на расстоянии
+ if remotePick then
+  status.Text="PICKING KEY"
+
+  if remoteUse(key) then
+   if on then status.Text="AUTO FARM ON" end
+   return on
+  end
+ end
+
+ -- запасной способ: телепорт к ключу и нажатия E
  local root=getRoot()
  if not root then return false end
 
@@ -591,42 +632,55 @@ local function unlockDoors()
  local doors=findDoors()
  if #doors==0 then return false end
 
- interacting=true
-
  for i,door in ipairs(doors) do
   if not on then break end
 
-  local root=getRoot()
-  if not root then break end
+  -- без телепорта: открываем дверь прямо на расстоянии
+  local opened=false
 
-  status.Text="GOING TO DOOR "..i
-  root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
-  root.AssemblyLinearVelocity=Vector3.zero
-
-  local attachment=Instance.new("Attachment")
-  attachment.Parent=root
-
-  local velocity=Instance.new("LinearVelocity")
-  velocity.Attachment0=attachment
-  velocity.MaxForce=math.huge
-  velocity.VectorVelocity=Vector3.zero
-  velocity.Parent=root
-
-  task.wait(3)
-
-  if on then
+  if remotePick then
    status.Text="UNLOCKING DOOR "..i
-
-   for attempt=1,3 do
-    if not on then break end
-    holdE(1.5)
-    task.wait(1)
-   end
+   opened=remoteUse(door)
   end
 
-  velocity:Destroy()
-  attachment:Destroy()
-  task.wait(2)
+  -- запасной способ: телепорт к двери и удержание E
+  if not opened then
+   local root=getRoot()
+   if not root then break end
+
+   interacting=true
+
+   status.Text="GOING TO DOOR "..i
+   root.CFrame=door.part.CFrame*CFrame.new(0,0,-1)
+   root.AssemblyLinearVelocity=Vector3.zero
+
+   local attachment=Instance.new("Attachment")
+   attachment.Parent=root
+
+   local velocity=Instance.new("LinearVelocity")
+   velocity.Attachment0=attachment
+   velocity.MaxForce=math.huge
+   velocity.VectorVelocity=Vector3.zero
+   velocity.Parent=root
+
+   task.wait(3)
+
+   if on then
+    status.Text="UNLOCKING DOOR "..i
+
+    for attempt=1,3 do
+     if not on then break end
+     holdE(1.5)
+     task.wait(1)
+    end
+   end
+
+   velocity:Destroy()
+   attachment:Destroy()
+   task.wait(2)
+
+   interacting=false
+  end
  end
 
  if on then
@@ -1173,6 +1227,23 @@ modeBtn.MouseButton1Click:Connect(function()
  refreshMode()
 end)
 
+local function refreshPick()
+ if remotePick then
+  pickBtn.Text="ПОДБОР: БЕЗ ТЕЛЕПОРТА"
+  pickBtn.BackgroundColor3=ON_COLOR
+ else
+  pickBtn.Text="ПОДБОР: С ТЕЛЕПОРТОМ"
+  pickBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+pickBtn.MouseButton1Click:Connect(function()
+ remotePick=not remotePick
+ settings.remote=remotePick
+ saveSettings()
+ refreshPick()
+end)
+
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
@@ -1245,6 +1316,7 @@ refreshAim()
 refreshStuck()
 refreshSlot()
 refreshMode()
+refreshPick()
 
 startFarm()
 ]==]
