@@ -22,7 +22,8 @@ local settings={
  antiStuck=false, -- антизастревание
  height=-8,       -- высота относительно моба (минус = ниже)
  dist=0,          -- расстояние от моба (плюс = впереди, минус = сзади)
- slot=2           -- какой слот держать в руках (1-9)
+ slot=2,          -- какой слот держать в руках (1-9)
+ tp=false         -- false = ходьба к мобу, true = мгновенный телепорт
 }
 
 local function loadSettings()
@@ -48,7 +49,7 @@ local function loadSettings()
   end
  end
 
- settings.speed=math.clamp(settings.speed,5,300)
+ settings.speed=math.clamp(settings.speed,5,1000)
  settings.height=math.clamp(settings.height,-50,50)
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
@@ -115,6 +116,7 @@ local lastPick=0
 local noclipEnabled=settings.noclip -- ручной noclip, кнопка в меню
 local aimEnabled=settings.aim       -- авто-наведение, кнопка в меню
 local antiStuckEnabled=settings.antiStuck -- антизастревание, кнопка в меню
+local teleportMode=settings.tp    -- false = ходьба, true = телепорт, кнопка в меню
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
 local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
@@ -183,7 +185,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,318)
+f.Size=UDim2.fromOffset(165,348)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -206,7 +208,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,275)
+stop.Position=UDim2.fromOffset(85,305)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -263,10 +265,11 @@ local noclipBtn=makeToggle(155)
 local aimBtn=makeToggle(185)
 local stuckBtn=makeToggle(215)
 local slotMinus,slotLabel,slotPlus=makeRow(245)
+local modeBtn=makeToggle(275)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,275)
+startBtn.Position=UDim2.fromOffset(5,305)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -864,7 +867,8 @@ local function glideStep(dt)
  local offset=desired-root.Position
  local dist=offset.Magnitude
 
- if dist<=ARRIVE_DIST then
+ if dist<=ARRIVE_DIST or teleportMode then
+  -- пришли, либо включён режим телепорта: сразу ставим на точку
   gliding=false
   endAuto()
   root.CFrame=CFrame.lookAt(desired,t.Position)
@@ -1058,6 +1062,21 @@ end
 
 env.AutoFarmStop=shutdown
 
+-- Шаг скорости растёт вместе со значением: 5 до 100, 25 до 300, дальше 50
+local function nextSpeed(value,dir)
+ local step=5
+
+ if (dir>0 and value>=100) or (dir<0 and value>100) then
+  step=25
+ end
+
+ if (dir>0 and value>=300) or (dir<0 and value>300) then
+  step=50
+ end
+
+ return math.clamp(value+dir*step,5,1000)
+end
+
 local ON_COLOR=Color3.fromRGB(40,130,60)
 local OFF_COLOR=Color3.fromRGB(90,90,90)
 
@@ -1074,14 +1093,14 @@ local function refreshDist()
 end
 
 speedMinus.MouseButton1Click:Connect(function()
- MOVE_SPEED=math.max(5,MOVE_SPEED-5)
+ MOVE_SPEED=nextSpeed(MOVE_SPEED,-1)
  settings.speed=MOVE_SPEED
  saveSettings()
  refreshSpeed()
 end)
 
 speedPlus.MouseButton1Click:Connect(function()
- MOVE_SPEED=math.min(300,MOVE_SPEED+5)
+ MOVE_SPEED=nextSpeed(MOVE_SPEED,1)
  settings.speed=MOVE_SPEED
  saveSettings()
  refreshSpeed()
@@ -1135,6 +1154,23 @@ end)
 
 slotPlus.MouseButton1Click:Connect(function()
  changeSlot(slotIndex+1)
+end)
+
+local function refreshMode()
+ if teleportMode then
+  modeBtn.Text="РЕЖИМ: ТЕЛЕПОРТ"
+  modeBtn.BackgroundColor3=Color3.fromRGB(190,110,30)
+ else
+  modeBtn.Text="РЕЖИМ: ХОДЬБА"
+  modeBtn.BackgroundColor3=Color3.fromRGB(60,60,80)
+ end
+end
+
+modeBtn.MouseButton1Click:Connect(function()
+ teleportMode=not teleportMode
+ settings.tp=teleportMode
+ saveSettings()
+ refreshMode()
 end)
 
 local function refreshNoclip()
@@ -1208,6 +1244,7 @@ refreshNoclip()
 refreshAim()
 refreshStuck()
 refreshSlot()
+refreshMode()
 
 startFarm()
 ]==]
