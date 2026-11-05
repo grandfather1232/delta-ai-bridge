@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=1
+local VERSION=2
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -9,6 +9,60 @@ end
 
 env.AutoFarmVersion=VERSION
 env.AutoFarmJob=game.JobId
+
+-- Сохранение настроек: файл переживает смену сервера и перезаход в игру.
+-- Если writefile недоступен, настройки хранятся хотя бы в getgenv до выхода.
+local HttpService=game:GetService("HttpService")
+local SETTINGS_FILE="AutoFarmSettings.json"
+
+local settings={
+ speed=50,        -- скорость движения к мобу
+ noclip=false,    -- ручной noclip
+ aim=false,       -- авто-наведение
+ antiStuck=false, -- антизастревание
+ height=-8,       -- высота относительно моба (минус = ниже)
+ dist=0           -- расстояние от моба (плюс = впереди, минус = сзади)
+}
+
+local function loadSettings()
+ local data=nil
+
+ pcall(function()
+  if readfile and isfile and isfile(SETTINGS_FILE) then
+   data=HttpService:JSONDecode(readfile(SETTINGS_FILE))
+  end
+ end)
+
+ if type(data)~="table" and type(env.AutoFarmSettings)=="table" then
+  data=env.AutoFarmSettings
+ end
+
+ if type(data)=="table" then
+  for key,default in pairs(settings) do
+   local value=data[key]
+
+   if value~=nil and type(value)==type(default) then
+    settings[key]=value
+   end
+  end
+ end
+
+ settings.speed=math.clamp(settings.speed,5,300)
+ settings.height=math.clamp(settings.height,-50,50)
+ settings.dist=math.clamp(settings.dist,-50,50)
+end
+
+local function saveSettings()
+ env.AutoFarmSettings=settings
+
+ pcall(function()
+  if writefile then
+   writefile(SETTINGS_FILE,HttpService:JSONEncode(settings))
+  end
+ end)
+end
+
+loadSettings()
 
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
@@ -43,10 +97,13 @@ local characterVersion=0
 local lastPick=0
 
 -- Настройки телепорта к мобу
-local noclipEnabled=false -- по умолчанию выключен, включается кнопкой в меню
-local aimEnabled=false   -- авто-наведение, по умолчанию выключено, включается кнопкой в меню
+local noclipEnabled=settings.noclip -- ручной noclip, кнопка в меню
+local aimEnabled=settings.aim       -- авто-наведение, кнопка в меню
+local antiStuckEnabled=settings.antiStuck -- антизастревание, кнопка в меню
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
-local MOVE_SPEED=50       -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
+local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
+local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
+local MOVE_SPEED=settings.speed   -- скорость "бега" к мобу, studs/сек (меньше = плавнее)
 local ARRIVE_DIST=1.5     -- считаем, что дошли, когда ближе этого расстояния
 local CHECK_WINDOW=.4     -- как часто сверяем пройденный путь с ожидаемым (сек)
 local MIN_PROGRESS=.5     -- прошли меньше этой доли ожидаемого пути = застряли
@@ -111,7 +168,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,200)
+f.Size=UDim2.fromOffset(165,288)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -134,7 +191,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,160)
+stop.Position=UDim2.fromOffset(85,245)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -148,46 +205,52 @@ dbg.BackgroundTransparency=1
 dbg.TextSize=11
 dbg.TextWrapped=true
 
-local speedMinus=Instance.new("TextButton",f)
-speedMinus.Size=UDim2.fromOffset(35,26)
-speedMinus.Position=UDim2.fromOffset(5,65)
-speedMinus.Text="-"
-speedMinus.TextColor3=Color3.new(1,1,1)
-speedMinus.BackgroundColor3=Color3.fromRGB(60,60,80)
+-- Строка "минус / значение / плюс"
+local function makeRow(y)
+ local minus=Instance.new("TextButton",f)
+ minus.Size=UDim2.fromOffset(35,26)
+ minus.Position=UDim2.fromOffset(5,y)
+ minus.Text="-"
+ minus.TextColor3=Color3.new(1,1,1)
+ minus.BackgroundColor3=Color3.fromRGB(60,60,80)
 
-local speedLabel=Instance.new("TextLabel",f)
-speedLabel.Size=UDim2.fromOffset(75,26)
-speedLabel.Position=UDim2.fromOffset(45,65)
-speedLabel.Text="SPEED: "..MOVE_SPEED
-speedLabel.TextColor3=Color3.new(1,1,1)
-speedLabel.BackgroundTransparency=1
-speedLabel.TextSize=12
+ local label=Instance.new("TextLabel",f)
+ label.Size=UDim2.fromOffset(75,26)
+ label.Position=UDim2.fromOffset(45,y)
+ label.TextColor3=Color3.new(1,1,1)
+ label.BackgroundTransparency=1
+ label.TextSize=12
 
-local speedPlus=Instance.new("TextButton",f)
-speedPlus.Size=UDim2.fromOffset(35,26)
-speedPlus.Position=UDim2.fromOffset(125,65)
-speedPlus.Text="+"
-speedPlus.TextColor3=Color3.new(1,1,1)
-speedPlus.BackgroundColor3=Color3.fromRGB(60,60,80)
+ local plus=Instance.new("TextButton",f)
+ plus.Size=UDim2.fromOffset(35,26)
+ plus.Position=UDim2.fromOffset(125,y)
+ plus.Text="+"
+ plus.TextColor3=Color3.new(1,1,1)
+ plus.BackgroundColor3=Color3.fromRGB(60,60,80)
 
-local noclipBtn=Instance.new("TextButton",f)
-noclipBtn.Size=UDim2.new(1,-10,0,28)
-noclipBtn.Position=UDim2.fromOffset(5,97)
-noclipBtn.Text="NOCLIP: ON"
-noclipBtn.TextColor3=Color3.new(1,1,1)
-noclipBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+ return minus,label,plus
+end
 
-local aimBtn=Instance.new("TextButton",f)
-aimBtn.Size=UDim2.new(1,-10,0,28)
-aimBtn.Position=UDim2.fromOffset(5,127)
-aimBtn.Text="AIM: ON (hold Ctrl)"
-aimBtn.TextSize=11
-aimBtn.TextColor3=Color3.new(1,1,1)
-aimBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+-- Кнопка-переключатель на всю ширину
+local function makeToggle(y)
+ local button=Instance.new("TextButton",f)
+ button.Size=UDim2.new(1,-10,0,26)
+ button.Position=UDim2.fromOffset(5,y)
+ button.TextSize=11
+ button.TextColor3=Color3.new(1,1,1)
+ return button
+end
+
+local speedMinus,speedLabel,speedPlus=makeRow(65)
+local heightMinus,heightLabel,heightPlus=makeRow(95)
+local distMinus,distLabel,distPlus=makeRow(125)
+local noclipBtn=makeToggle(155)
+local aimBtn=makeToggle(185)
+local stuckBtn=makeToggle(215)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,160)
+startBtn.Position=UDim2.fromOffset(5,245)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -629,6 +692,68 @@ local function endAuto()
  end
 end
 
+-- Точка, куда идём: относительно моба по высоте и расстоянию.
+-- По умолчанию (height=-8, dist=0) это точка на 8 studs под мобом.
+local function goalFor(t)
+ local look=t.CFrame.LookVector
+ local flat=Vector3.new(look.X,0,look.Z)
+
+ if flat.Magnitude>.001 then
+  flat=flat.Unit
+ else
+  flat=Vector3.zero
+ end
+
+ return t.Position+flat*OFFSET_DIST+Vector3.new(0,OFFSET_Y,0)
+end
+
+-- Антизастревание: каждые CHECK_WINDOW сек сравнивает, сколько персонаж
+-- реально прошёл и сколько должен был при MOVE_SPEED. Если меньше доли
+-- MIN_PROGRESS, на NOCLIP_TIME секунд включает noclip и затем выключает.
+-- Работает, только если включено в меню и ручной noclip выключен.
+local function antiStuck(root,dist)
+ local now=os.clock()
+
+ -- новое окно измерения: начало движения или пауза (ключи/двери, лаг)
+ if not winPos or now-lastGlide>.5 then
+  winStart=now
+  winPos=root.Position
+  winDist=dist
+ end
+
+ lastGlide=now
+
+ if not antiStuckEnabled or noclipEnabled then
+  endAuto()
+  winStart=now
+  winPos=root.Position
+  winDist=dist
+  return
+ end
+
+ if autoNoclip then
+  if now>=autoUntil then
+   endAuto()
+   winStart=now
+   winPos=root.Position
+   winDist=dist
+  end
+ elseif now-winStart>=CHECK_WINDOW then
+  local moved=(root.Position-winPos).Magnitude
+  local expected=math.min(MOVE_SPEED*(now-winStart),winDist)
+
+  if expected>2 and moved<expected*MIN_PROGRESS then
+   autoNoclip=true
+   autoUntil=now+NOCLIP_TIME
+   setNoclip(true)
+  end
+
+  winStart=now
+  winPos=root.Position
+  winDist=dist
+ end
+end
+
 -- Решение: какого моба бить и нужно ли к нему идти (раз в 0.2 сек)
 local function farmStep()
  local root=getRoot()
@@ -694,7 +819,7 @@ local function farmStep()
  end
 
  -- идти к мобу: новая цель или моб ушёл дальше REPOSITION_DIST
- local desired=t.Position-Vector3.new(0,8,0)
+ local desired=goalFor(t)
  local dist=(root.Position-desired).Magnitude
 
  if target~=tpTarget or (not gliding and dist>REPOSITION_DIST) then
@@ -717,7 +842,7 @@ local function glideStep(dt)
  local t=mobRoot(target)
  if not root or not t then return end
 
- local desired=t.Position-Vector3.new(0,8,0)
+ local desired=goalFor(t)
  local offset=desired-root.Position
  local dist=offset.Magnitude
 
@@ -729,45 +854,7 @@ local function glideStep(dt)
   return
  end
 
- local now=os.clock()
-
- -- новое окно измерения: начало движения или пауза (ключи/двери, лаг)
- if not winPos or now-lastGlide>.5 then
-  winStart=now
-  winPos=root.Position
-  winDist=dist
- end
-
- lastGlide=now
-
- if noclipEnabled then
-  -- noclip включён вручную: авто-логика не нужна
-  winStart=now
-  winPos=root.Position
-  winDist=dist
- elseif autoNoclip then
-  -- авто-noclip выключаем ровно через NOCLIP_TIME секунд
-  if now>=autoUntil then
-   endAuto()
-   winStart=now
-   winPos=root.Position
-   winDist=dist
-  end
- elseif now-winStart>=CHECK_WINDOW then
-  -- сравниваем, сколько реально прошли и сколько должны были при MOVE_SPEED
-  local moved=(root.Position-winPos).Magnitude
-  local expected=math.min(MOVE_SPEED*(now-winStart),winDist)
-
-  if expected>2 and moved<expected*MIN_PROGRESS then
-   autoNoclip=true
-   autoUntil=now+NOCLIP_TIME
-   setNoclip(true)
-  end
-
-  winStart=now
-  winPos=root.Position
-  winDist=dist
- end
+ antiStuck(root,dist)
 
  local step=math.min(dist,MOVE_SPEED*dt)
  local newPos=root.Position+offset.Unit*step
@@ -953,32 +1040,77 @@ end
 
 env.AutoFarmStop=shutdown
 
+local ON_COLOR=Color3.fromRGB(40,130,60)
+local OFF_COLOR=Color3.fromRGB(90,90,90)
+
 local function refreshSpeed()
  speedLabel.Text="SPEED: "..MOVE_SPEED
 end
 
+local function refreshHeight()
+ heightLabel.Text="HEIGHT: "..OFFSET_Y
+end
+
+local function refreshDist()
+ distLabel.Text="DIST: "..OFFSET_DIST
+end
+
 speedMinus.MouseButton1Click:Connect(function()
- MOVE_SPEED=math.max(25,MOVE_SPEED-25)
+ MOVE_SPEED=math.max(5,MOVE_SPEED-5)
+ settings.speed=MOVE_SPEED
+ saveSettings()
  refreshSpeed()
 end)
 
 speedPlus.MouseButton1Click:Connect(function()
- MOVE_SPEED=math.min(300,MOVE_SPEED+25)
+ MOVE_SPEED=math.min(300,MOVE_SPEED+5)
+ settings.speed=MOVE_SPEED
+ saveSettings()
  refreshSpeed()
+end)
+
+heightMinus.MouseButton1Click:Connect(function()
+ OFFSET_Y=math.max(-50,OFFSET_Y-1)
+ settings.height=OFFSET_Y
+ saveSettings()
+ refreshHeight()
+end)
+
+heightPlus.MouseButton1Click:Connect(function()
+ OFFSET_Y=math.min(50,OFFSET_Y+1)
+ settings.height=OFFSET_Y
+ saveSettings()
+ refreshHeight()
+end)
+
+distMinus.MouseButton1Click:Connect(function()
+ OFFSET_DIST=math.max(-50,OFFSET_DIST-1)
+ settings.dist=OFFSET_DIST
+ saveSettings()
+ refreshDist()
+end)
+
+distPlus.MouseButton1Click:Connect(function()
+ OFFSET_DIST=math.min(50,OFFSET_DIST+1)
+ settings.dist=OFFSET_DIST
+ saveSettings()
+ refreshDist()
 end)
 
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
-  noclipBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+  noclipBtn.BackgroundColor3=ON_COLOR
  else
   noclipBtn.Text="NOCLIP: OFF"
-  noclipBtn.BackgroundColor3=Color3.fromRGB(90,90,90)
+  noclipBtn.BackgroundColor3=OFF_COLOR
  end
 end
 
 noclipBtn.MouseButton1Click:Connect(function()
  noclipEnabled=not noclipEnabled
+ settings.noclip=noclipEnabled
+ saveSettings()
  refreshNoclip()
 
  if on then
@@ -986,29 +1118,55 @@ noclipBtn.MouseButton1Click:Connect(function()
  end
 end)
 
-refreshNoclip()
-
 local function refreshAim()
  if aimEnabled then
   aimBtn.Text="AIM: ON (hold Ctrl)"
-  aimBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
+  aimBtn.BackgroundColor3=ON_COLOR
  else
   aimBtn.Text="AIM: OFF"
-  aimBtn.BackgroundColor3=Color3.fromRGB(90,90,90)
+  aimBtn.BackgroundColor3=OFF_COLOR
  end
 end
 
 aimBtn.MouseButton1Click:Connect(function()
  aimEnabled=not aimEnabled
+ settings.aim=aimEnabled
+ saveSettings()
  refreshAim()
 end)
 
-refreshAim()
+local function refreshStuck()
+ if antiStuckEnabled then
+  stuckBtn.Text="Антизастревание: ВКЛ"
+  stuckBtn.BackgroundColor3=ON_COLOR
+ else
+  stuckBtn.Text="Антизастревание: ВЫКЛ"
+  stuckBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+stuckBtn.MouseButton1Click:Connect(function()
+ antiStuckEnabled=not antiStuckEnabled
+ settings.antiStuck=antiStuckEnabled
+ saveSettings()
+ refreshStuck()
+
+ if not antiStuckEnabled then
+  endAuto()
+ end
+end)
 
 startBtn.MouseButton1Click:Connect(function()
  if on then return end
  startFarm()
 end)
+
+refreshSpeed()
+refreshHeight()
+refreshDist()
+refreshNoclip()
+refreshAim()
+refreshStuck()
 
 startFarm()
 ]==]
@@ -1020,8 +1178,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>1 then return end
- if env.AutoFarmVersion==1 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>2 then return end
+ if env.AutoFarmVersion==2 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
