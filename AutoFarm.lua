@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=4
+local VERSION=5
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -72,6 +72,12 @@ end
 
 loadSettings()
 
+-- После перехода на другой сервер скрипт запускается очень рано:
+-- ждём, пока игра полностью загрузится (иначе окна и объекты ещё не созданы)
+if not game:IsLoaded() then
+ game.Loaded:Wait()
+end
+
 local P=game:GetService("Players")
 local R=game:GetService("RunService")
 local V=game:GetService("VirtualInputManager")
@@ -81,6 +87,15 @@ local UIS=game:GetService("UserInputService")
 local GuiService=game:GetService("GuiService")
 local me=P.LocalPlayer
 local pg=me:WaitForChild("PlayerGui")
+
+-- PlayerGui могли пересоздать после загрузки: берём актуальный
+local function refreshPg()
+ local current=me:FindFirstChildOfClass("PlayerGui")
+
+ if current then
+  pg=current
+ end
+end
 
 local services=RS.ReplicatedStorage.Packages.Knit.Services
 local startRemote=services.DungeonService.RF.StartDungeon
@@ -527,6 +542,8 @@ end
 
 local function retryLoop(myRun)
  while on and myRun==runId do
+  refreshPg()
+
   if dungeonComplete() and not retryBusy then
    retryBusy=true
    status.Text="RETRYING..."
@@ -1191,6 +1208,8 @@ end
 
 local function buffLoop(myRun)
  while on and myRun==runId do
+  refreshPg()
+
   if buffEnabled then
    local ok,gui,buttons=pcall(findBuffMenu)
 
@@ -1725,8 +1744,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>4 then return end
- if env.AutoFarmVersion==4 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>5 then return end
+ if env.AutoFarmVersion==5 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
