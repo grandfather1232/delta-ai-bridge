@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=5
+local VERSION=6
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -98,9 +98,10 @@ local function refreshPg()
 end
 
 local services=RS.ReplicatedStorage.Packages.Knit.Services
-local startRemote=services.DungeonService.RF.StartDungeon
-local voteRemote=services.PartyService.RF.VoteOn
-local startedEvent=services.DungeonService.RE.DungeonStarted
+
+-- Remote-объекты берём напрямую (без FindFirstChild), но только в момент вызова,
+-- внутри pcall: в лобби часть из них (например VoteOn) ещё не существует,
+-- и раньше это роняло весь скрипт при запуске.
 
 pcall(function()
  local old=Core:FindFirstChild("AutoFarm")
@@ -519,18 +520,29 @@ local function dungeonComplete()
  return true
 end
 
-startedEvent.OnClientEvent:Connect(function()
- startedCount=startedCount+1
- keyDone=false
- doorDone=false
- target=nil
+-- Событие старта подземелья: в лобби его может не быть, поэтому подключаемся
+-- с повторами в отдельном потоке и не роняем весь скрипт
+task.spawn(function()
+ for attempt=1,150 do
+  local ok=pcall(function()
+   services.DungeonService.RE.DungeonStarted.OnClientEvent:Connect(function()
+    startedCount=startedCount+1
+    keyDone=false
+    doorDone=false
+    target=nil
+   end)
+  end)
+
+  if ok then break end
+  task.wait(2)
+ end
 end)
 
 local function startDungeon()
  status.Text="STARTING DUNGEON"
 
  local ok=pcall(function()
-  startRemote:InvokeServer()
+  services.DungeonService.RF.StartDungeon:InvokeServer()
  end)
 
  if ok then
@@ -551,7 +563,7 @@ local function retryLoop(myRun)
    local before=startedCount
 
    local ok=pcall(function()
-    voteRemote:InvokeServer("Retry")
+    services.PartyService.RF.VoteOn:InvokeServer("Retry")
    end)
 
    if ok then
@@ -1744,8 +1756,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>5 then return end
- if env.AutoFarmVersion==5 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>6 then return end
+ if env.AutoFarmVersion==6 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
