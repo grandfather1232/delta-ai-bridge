@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=2
+local VERSION=3
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -24,7 +24,9 @@ local settings={
  dist=0,          -- расстояние от моба (плюс = впереди, минус = сзади)
  slot=2,          -- какой слот держать в руках (1-9)
  tp=false,        -- false = ходьба к мобу, true = мгновенный телепорт
- remote=true      -- ключи и двери берём без телепорта (запасной способ: с телепортом)
+ remote=true,     -- ключи и двери берём без телепорта (запасной способ: с телепортом)
+ buff=true,       -- авто-выбор баффов после зачистки
+ buffPick=4       -- какой вариант брать: 1, 2, 3 или 4 = случайный
 }
 
 local function loadSettings()
@@ -54,6 +56,7 @@ local function loadSettings()
  settings.height=math.clamp(settings.height,-50,50)
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
+ settings.buffPick=math.floor(math.clamp(settings.buffPick,1,4))
 end
 
 local function saveSettings()
@@ -74,6 +77,7 @@ local V=game:GetService("VirtualInputManager")
 local RS=game:GetService("ReplicatedStorage")
 local Core=game:GetService("CoreGui")
 local UIS=game:GetService("UserInputService")
+local GuiService=game:GetService("GuiService")
 local me=P.LocalPlayer
 local pg=me:WaitForChild("PlayerGui")
 
@@ -119,6 +123,8 @@ local aimEnabled=settings.aim       -- авто-наведение, кнопка
 local antiStuckEnabled=settings.antiStuck -- антизастревание, кнопка в меню
 local teleportMode=settings.tp    -- false = ходьба, true = телепорт, кнопка в меню
 local remotePick=settings.remote  -- подбор ключей и дверей без телепорта, кнопка в меню
+local buffEnabled=settings.buff   -- авто-выбор баффов, кнопка в меню
+local buffPick=settings.buffPick  -- 1, 2, 3 или 4 (случайный)
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
 local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
@@ -187,7 +193,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,378)
+f.Size=UDim2.fromOffset(165,320)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -210,7 +216,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,335)
+stop.Position=UDim2.fromOffset(85,280)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -224,23 +230,32 @@ dbg.BackgroundTransparency=1
 dbg.TextSize=11
 dbg.TextWrapped=true
 
+-- Прокручиваемая область с настройками (меню не вылезает за экран)
+local body=Instance.new("ScrollingFrame",f)
+body.Position=UDim2.fromOffset(0,65)
+body.Size=UDim2.new(1,0,0,210)
+body.BackgroundTransparency=1
+body.BorderSizePixel=0
+body.ScrollBarThickness=4
+body.CanvasSize=UDim2.new(0,0,0,362)
+
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
- local minus=Instance.new("TextButton",f)
+ local minus=Instance.new("TextButton",body)
  minus.Size=UDim2.fromOffset(35,26)
  minus.Position=UDim2.fromOffset(5,y)
  minus.Text="-"
  minus.TextColor3=Color3.new(1,1,1)
  minus.BackgroundColor3=Color3.fromRGB(60,60,80)
 
- local label=Instance.new("TextLabel",f)
+ local label=Instance.new("TextLabel",body)
  label.Size=UDim2.fromOffset(75,26)
  label.Position=UDim2.fromOffset(45,y)
  label.TextColor3=Color3.new(1,1,1)
  label.BackgroundTransparency=1
  label.TextSize=12
 
- local plus=Instance.new("TextButton",f)
+ local plus=Instance.new("TextButton",body)
  plus.Size=UDim2.fromOffset(35,26)
  plus.Position=UDim2.fromOffset(125,y)
  plus.Text="+"
@@ -252,7 +267,7 @@ end
 
 -- Кнопка-переключатель на всю ширину
 local function makeToggle(y)
- local button=Instance.new("TextButton",f)
+ local button=Instance.new("TextButton",body)
  button.Size=UDim2.new(1,-10,0,26)
  button.Position=UDim2.fromOffset(5,y)
  button.TextSize=11
@@ -260,19 +275,22 @@ local function makeToggle(y)
  return button
 end
 
-local speedMinus,speedLabel,speedPlus=makeRow(65)
-local heightMinus,heightLabel,heightPlus=makeRow(95)
-local distMinus,distLabel,distPlus=makeRow(125)
-local noclipBtn=makeToggle(155)
-local aimBtn=makeToggle(185)
-local stuckBtn=makeToggle(215)
-local slotMinus,slotLabel,slotPlus=makeRow(245)
-local modeBtn=makeToggle(275)
-local pickBtn=makeToggle(305)
+local speedMinus,speedLabel,speedPlus=makeRow(0)
+local heightMinus,heightLabel,heightPlus=makeRow(30)
+local distMinus,distLabel,distPlus=makeRow(60)
+local noclipBtn=makeToggle(90)
+local aimBtn=makeToggle(120)
+local stuckBtn=makeToggle(150)
+local slotMinus,slotLabel,slotPlus=makeRow(180)
+local modeBtn=makeToggle(210)
+local pickBtn=makeToggle(240)
+local buffBtn=makeToggle(270)
+local buffMinus,buffLabel,buffPlus=makeRow(300)
+local scanBtn=makeToggle(330)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,335)
+startBtn.Position=UDim2.fromOffset(5,280)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -435,6 +453,11 @@ local function attackSkills()
   Enum.KeyCode.V
  }
 
+ -- слот 1 в руках: дополнительная атака на R
+ if slotIndex==1 and equippedTool() then
+  table.insert(keys,Enum.KeyCode.R)
+ end
+
  for i,k in ipairs(keys) do
   if not on then return end
   if i>1 then task.wait(.4) end
@@ -570,11 +593,12 @@ end
 -- Использовать ProximityPrompt прямо на расстоянии, без телепорта и без нажатия E.
 -- Возвращает true, если после нажатия подсказка исчезла/выключилась (ключ взят,
 -- дверь открыта). Если не вышло, вызывающий код использует старый способ с телепортом.
-local function remoteUse(entry)
+local function remoteUse(entry,interval)
  if not remotePick or not fireproximityprompt then return false end
 
  local prompt=entry.prompt
  local part=entry.part
+ interval=interval or .6
 
  for attempt=1,3 do
   if not on then return false end
@@ -584,7 +608,7 @@ local function remoteUse(entry)
    fireproximityprompt(prompt)
   end)
 
-  task.wait(.6)
+  task.wait(interval)
 
   if not prompt.Parent or not prompt.Enabled or not part.Parent then
    return true
@@ -602,7 +626,7 @@ local function collectKey()
  if remotePick then
   status.Text="PICKING KEY"
 
-  if remoteUse(key) then
+  if remoteUse(key,.5) then
    if on then status.Text="AUTO FARM ON" end
    return on
   end
@@ -621,7 +645,7 @@ local function collectKey()
  if on then
   status.Text="PICKING KEY"
   repeatE(5)
-  task.wait(2)
+  task.wait(.5)
  end
 
  interacting=false
@@ -640,7 +664,7 @@ local function unlockDoors()
 
   if remotePick then
    status.Text="UNLOCKING DOOR "..i
-   opened=remoteUse(door)
+   opened=remoteUse(door,.35)
   end
 
   -- запасной способ: телепорт к двери и удержание E
@@ -663,7 +687,7 @@ local function unlockDoors()
    velocity.VectorVelocity=Vector3.zero
    velocity.Parent=root
 
-   task.wait(3)
+   task.wait(1.5)
 
    if on then
     status.Text="UNLOCKING DOOR "..i
@@ -671,13 +695,13 @@ local function unlockDoors()
     for attempt=1,3 do
      if not on then break end
      holdE(1.5)
-     task.wait(1)
+     task.wait(.5)
     end
    end
 
    velocity:Destroy()
    attachment:Destroy()
-   task.wait(2)
+   task.wait(1)
 
    interacting=false
   end
@@ -686,7 +710,7 @@ local function unlockDoors()
  if on then
   doorDone=true
   ensureSlot()
-  task.wait(1)
+  task.wait(.5)
  end
 
  interacting=false
@@ -703,13 +727,16 @@ local function keyDoorLoop(myRun)
      keyDone=true
     end
    end
-  elseif not doorDone then
+  end
+
+  -- ключ взят: сразу открываем двери, не ждём следующего круга
+  if keyDone and not doorDone then
    if #findDoors()>0 then
     unlockDoors()
    end
   end
 
-  task.wait(1)
+  task.wait(.5)
  end
 end
 
@@ -944,6 +971,254 @@ local function canAttack()
  return target~=nil
 end
 
+-- Авто-выбор баффов/дебаффов после зачистки подземелья.
+-- Окно ищем по признакам: видимое ScreenGui в PlayerGui, где есть слово-подсказка
+-- (buff, choose, perk...) и не меньше 3 видимых кнопок. Выбор делаем клавишей 1-3,
+-- а если окно не закрылось, нажимаем саму кнопку.
+local BUFF_WORDS={
+ "buff","debuff","boon","blessing","curse","perk","augment","modifier",
+ "choose","select","upgrade",
+ "баф","дебаф","улучш","выбер","благослов","проклят",
+ "Баф","Дебаф","Улучш","Выбер","Благослов","Проклят"
+}
+
+local BUFF_IGNORE={
+ Chat=true,
+ BubbleChat=true,
+ PlayerList=true,
+ Backpack=true,
+ TouchGui=true,
+ ControlGui=true
+}
+
+-- Объект виден: все родители до PlayerGui включены
+local function guiVisible(obj)
+ local o=obj
+
+ while o and o~=pg do
+  if o:IsA("GuiObject") and not o.Visible then return false end
+  if o:IsA("ScreenGui") and not o.Enabled then return false end
+  o=o.Parent
+ end
+
+ return true
+end
+
+local function hasBuffWord(text)
+ local lower=text:lower()
+
+ for _,word in ipairs(BUFF_WORDS) do
+  if lower:find(word,1,true) or text:find(word,1,true) then
+   return true
+  end
+ end
+
+ return false
+end
+
+-- Возвращает окно выбора и список его кнопок слева направо (или nil)
+local function findBuffMenu()
+ for _,gui in ipairs(pg:GetChildren()) do
+  if gui:IsA("ScreenGui") and gui.Enabled and not BUFF_IGNORE[gui.Name] then
+   local buttons={}
+   local hit=false
+
+   for _,obj in ipairs(gui:GetDescendants()) do
+    if obj:IsA("GuiObject") and guiVisible(obj) then
+     if obj:IsA("GuiButton") then
+      table.insert(buttons,obj)
+     end
+
+     if not hit and (obj:IsA("TextLabel") or obj:IsA("TextButton"))
+     and obj.Text~="" then
+      hit=hasBuffWord(obj.Text)
+     end
+    end
+   end
+
+   if hit and #buttons>=3 then
+    -- если есть ровно 3 кнопки с общим родителем, берём их
+    local groups={}
+
+    for _,button in ipairs(buttons) do
+     groups[button.Parent]=groups[button.Parent] or {}
+     table.insert(groups[button.Parent],button)
+    end
+
+    local chosen=nil
+
+    for _,list in pairs(groups) do
+     if #list==3 then
+      chosen=list
+      break
+     end
+    end
+
+    chosen=chosen or buttons
+
+    table.sort(chosen,function(a,b)
+     if math.abs(a.AbsolutePosition.X-b.AbsolutePosition.X)>2 then
+      return a.AbsolutePosition.X<b.AbsolutePosition.X
+     end
+
+     return a.AbsolutePosition.Y<b.AbsolutePosition.Y
+    end)
+
+    return gui,chosen
+   end
+  end
+ end
+
+ return nil
+end
+
+local function clickButton(button)
+ if firesignal then
+  pcall(function() firesignal(button.MouseButton1Click) end)
+  pcall(function() firesignal(button.Activated) end)
+  return
+ end
+
+ local screen=button:FindFirstAncestorOfClass("ScreenGui")
+ local inset=Vector2.zero
+
+ if screen and not screen.IgnoreGuiInset then
+  inset=GuiService:GetGuiInset()
+ end
+
+ local pos=button.AbsolutePosition+button.AbsoluteSize/2+inset
+
+ V:SendMouseButtonEvent(pos.X,pos.Y,0,true,game,0)
+ task.wait(.08)
+ V:SendMouseButtonEvent(pos.X,pos.Y,0,false,game,0)
+end
+
+local lastBuffGui=nil
+local lastBuffAt=0
+
+local function buffLoop(myRun)
+ while on and myRun==runId do
+  if buffEnabled then
+   local ok,gui,buttons=pcall(findBuffMenu)
+
+   if not ok or not gui then
+    lastBuffGui=nil
+   elseif gui~=lastBuffGui or os.clock()-lastBuffAt>8 then
+    lastBuffGui=gui
+    lastBuffAt=os.clock()
+
+    local choice=buffPick
+
+    if choice>3 then
+     choice=math.random(1,3)
+    end
+
+    -- на время выбора не даём ensureSlot() менять слот
+    slotBusy=true
+    status.Text="BUFF: "..choice
+
+    for attempt=1,3 do
+     if not on then break end
+
+     press(SLOT_KEYS[choice])
+     task.wait(.8)
+
+     local ok2,gui2=pcall(findBuffMenu)
+     if not (ok2 and gui2) then break end
+
+     if buttons and buttons[choice] then
+      clickButton(buttons[choice])
+      task.wait(.8)
+
+      local ok3,gui3=pcall(findBuffMenu)
+      if not (ok3 and gui3) then break end
+     end
+    end
+
+    slotBusy=false
+    if on then status.Text="AUTO FARM ON" end
+   end
+  end
+
+  task.wait(.7)
+ end
+end
+
+-- Отладка: список окон PlayerGui (имя, кнопки, тексты), чтобы подогнать поиск
+local function scanGuis()
+ local lines={}
+
+ for _,gui in ipairs(pg:GetChildren()) do
+  if gui:IsA("ScreenGui") then
+   local count=0
+   local texts={}
+
+   for _,obj in ipairs(gui:GetDescendants()) do
+    if obj:IsA("GuiObject") and guiVisible(obj) then
+     if obj:IsA("GuiButton") then
+      count=count+1
+     end
+
+     if (obj:IsA("TextLabel") or obj:IsA("TextButton"))
+     and obj.Text~="" and #texts<6 then
+      table.insert(texts,string.sub(obj.Text,1,24))
+     end
+    end
+   end
+
+   table.insert(lines,
+    gui.Name.." | on="..tostring(gui.Enabled)
+    .." | buttons="..count
+    .." | "..table.concat(texts," / "))
+  end
+ end
+
+ return table.concat(lines,"\n")
+end
+
+local function showReport(text)
+ pcall(function()
+  local old=Core:FindFirstChild("AutoFarmScan")
+  if old then old:Destroy() end
+ end)
+
+ warn(text)
+
+ local gui=Instance.new("ScreenGui")
+ gui.Name="AutoFarmScan"
+ gui.ResetOnSpawn=false
+ gui.Parent=Core
+
+ local frame=Instance.new("Frame",gui)
+ frame.Size=UDim2.fromOffset(340,240)
+ frame.Position=UDim2.new(.5,-170,.5,-120)
+ frame.BackgroundColor3=Color3.fromRGB(35,35,45)
+
+ local box=Instance.new("TextBox",frame)
+ box.Size=UDim2.new(1,-10,1,-45)
+ box.Position=UDim2.fromOffset(5,5)
+ box.MultiLine=true
+ box.TextWrapped=true
+ box.ClearTextOnFocus=false
+ box.TextXAlignment=Enum.TextXAlignment.Left
+ box.TextYAlignment=Enum.TextYAlignment.Top
+ box.TextSize=11
+ box.TextColor3=Color3.new(1,1,1)
+ box.BackgroundColor3=Color3.fromRGB(20,20,28)
+ box.Text=text
+
+ local close=Instance.new("TextButton",frame)
+ close.Size=UDim2.new(1,-10,0,30)
+ close.Position=UDim2.new(0,5,1,-35)
+ close.Text="ЗАКРЫТЬ"
+ close.TextColor3=Color3.new(1,1,1)
+ close.BackgroundColor3=Color3.fromRGB(160,40,40)
+
+ close.MouseButton1Click:Connect(function()
+  gui:Destroy()
+ end)
+end
+
 local function startFarm()
  if on then return end
  on=true
@@ -1048,6 +1323,7 @@ local function startFarm()
  end)
 
  task.spawn(retryLoop,myRun)
+ task.spawn(buffLoop,myRun)
  task.spawn(keyDoorLoop,myRun)
 end
 
@@ -1244,6 +1520,50 @@ pickBtn.MouseButton1Click:Connect(function()
  refreshPick()
 end)
 
+local function refreshBuff()
+ if buffEnabled then
+  buffBtn.Text="АВТО-БАФФ: ВКЛ"
+  buffBtn.BackgroundColor3=ON_COLOR
+ else
+  buffBtn.Text="АВТО-БАФФ: ВЫКЛ"
+  buffBtn.BackgroundColor3=OFF_COLOR
+ end
+end
+
+buffBtn.MouseButton1Click:Connect(function()
+ buffEnabled=not buffEnabled
+ settings.buff=buffEnabled
+ saveSettings()
+ refreshBuff()
+end)
+
+local function refreshBuffPick()
+ buffLabel.Text="БАФФ: "..(buffPick>3 and "RND" or buffPick)
+end
+
+local function changeBuffPick(value)
+ buffPick=math.clamp(value,1,4)
+ settings.buffPick=buffPick
+ saveSettings()
+ refreshBuffPick()
+end
+
+buffMinus.MouseButton1Click:Connect(function()
+ changeBuffPick(buffPick-1)
+end)
+
+buffPlus.MouseButton1Click:Connect(function()
+ changeBuffPick(buffPick+1)
+end)
+
+scanBtn.Text="СКАН ОКОН (отладка)"
+scanBtn.BackgroundColor3=Color3.fromRGB(60,60,80)
+
+scanBtn.MouseButton1Click:Connect(function()
+ local ok,report=pcall(scanGuis)
+ showReport(ok and report or ("ERR: "..tostring(report)))
+end)
+
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
@@ -1317,6 +1637,8 @@ refreshStuck()
 refreshSlot()
 refreshMode()
 refreshPick()
+refreshBuff()
+refreshBuffPick()
 
 startFarm()
 ]==]
@@ -1328,8 +1650,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>2 then return end
- if env.AutoFarmVersion==2 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>3 then return end
+ if env.AutoFarmVersion==3 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
