@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=3
+local VERSION=4
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -26,7 +26,8 @@ local settings={
  tp=false,        -- false = ходьба к мобу, true = мгновенный телепорт
  remote=true,     -- ключи и двери берём без телепорта (запасной способ: с телепортом)
  buff=true,       -- авто-выбор баффов после зачистки
- buffPick=4       -- какой вариант брать: 1, 2, 3 или 4 = случайный
+ buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
+ buffGui=""       -- имя окна баффов (запоминается после первого успешного выбора)
 }
 
 local function loadSettings()
@@ -125,6 +126,8 @@ local teleportMode=settings.tp    -- false = ходьба, true = телепор
 local remotePick=settings.remote  -- подбор ключей и дверей без телепорта, кнопка в меню
 local buffEnabled=settings.buff   -- авто-выбор баффов, кнопка в меню
 local buffPick=settings.buffPick  -- 1, 2, 3 или 4 (случайный)
+local knownBuffGui=settings.buffGui -- имя окна баффов, запомненное раньше
+local remoteFails=0               -- сколько раз подряд не сработал подбор на расстоянии
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
 local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
@@ -307,13 +310,23 @@ local function holdE(duration)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 end
 
-local function repeatE(duration)
+-- Подсказка исчезла/выключилась: ключ взят или дверь открыта
+local function promptGone(entry)
+ return not entry.prompt.Parent
+  or not entry.prompt.Enabled
+  or not entry.part.Parent
+end
+
+-- Нажимаем E, пока не пройдёт duration или пока подсказка не исчезнет
+local function repeatE(duration,entry)
  local elapsed=0
 
  while on and elapsed<duration do
   press(Enum.KeyCode.E)
   task.wait(.3)
   elapsed=elapsed+.42
+
+  if entry and promptGone(entry) then break end
  end
 end
 
@@ -596,11 +609,13 @@ end
 local function remoteUse(entry,interval)
  if not remotePick or not fireproximityprompt then return false end
 
- local prompt=entry.prompt
- local part=entry.part
- interval=interval or .6
+ -- два раза подряд не вышло: на расстоянии не работает, не тратим время
+ if remoteFails>=2 then return false end
 
- for attempt=1,3 do
+ local prompt=entry.prompt
+ interval=interval or .5
+
+ for attempt=1,2 do
   if not on then return false end
 
   pcall(function()
@@ -610,11 +625,13 @@ local function remoteUse(entry,interval)
 
   task.wait(interval)
 
-  if not prompt.Parent or not prompt.Enabled or not part.Parent then
+  if promptGone(entry) then
+   remoteFails=0
    return true
   end
  end
 
+ remoteFails=remoteFails+1
  return false
 end
 
@@ -626,7 +643,7 @@ local function collectKey()
  if remotePick then
   status.Text="PICKING KEY"
 
-  if remoteUse(key,.5) then
+  if remoteUse(key,.4) then
    if on then status.Text="AUTO FARM ON" end
    return on
   end
@@ -640,12 +657,11 @@ local function collectKey()
  status.Text="GOING TO KEY"
 
  root.CFrame=key.part.CFrame*CFrame.new(0,2,0)
- task.wait(1)
+ task.wait(.3)
 
  if on then
   status.Text="PICKING KEY"
-  repeatE(5)
-  task.wait(.5)
+  repeatE(5,key)
  end
 
  interacting=false
@@ -687,7 +703,7 @@ local function unlockDoors()
    velocity.VectorVelocity=Vector3.zero
    velocity.Parent=root
 
-   task.wait(1.5)
+   task.wait(.5)
 
    if on then
     status.Text="UNLOCKING DOOR "..i
@@ -695,13 +711,15 @@ local function unlockDoors()
     for attempt=1,3 do
      if not on then break end
      holdE(1.5)
-     task.wait(.5)
+     task.wait(.2)
+
+     if promptGone(door) then break end
     end
    end
 
    velocity:Destroy()
    attachment:Destroy()
-   task.wait(1)
+   task.wait(.3)
 
    interacting=false
   end
@@ -710,7 +728,7 @@ local function unlockDoors()
  if on then
   doorDone=true
   ensureSlot()
-  task.wait(.5)
+  task.wait(.2)
  end
 
  interacting=false
@@ -736,7 +754,7 @@ local function keyDoorLoop(myRun)
    end
   end
 
-  task.wait(.5)
+  task.wait(.3)
  end
 end
 
@@ -1036,7 +1054,7 @@ local function findBuffMenu()
     end
    end
 
-   if hit and #buttons>=3 then
+   if (hit or gui.Name==knownBuffGui) and #buttons>=3 then
     -- если есть ровно 3 кнопки с общим родителем, берём их
     local groups={}
 
@@ -1093,8 +1111,83 @@ local function clickButton(button)
  V:SendMouseButtonEvent(pos.X,pos.Y,0,false,game,0)
 end
 
-local lastBuffGui=nil
+-- "Подпись" окна: имя + тексты первых трёх вариантов. Новое меню с другими
+-- вариантами получает другую подпись, даже если окно то же самое.
+local function buffSignature(gui,buttons)
+ local parts={gui.Name,tostring(#buttons)}
+
+ for i=1,math.min(#buttons,3) do
+  local button=buttons[i]
+  local text=""
+
+  if button:IsA("TextButton") then
+   text=button.Text
+  end
+
+  for _,obj in ipairs(button:GetDescendants()) do
+   if obj:IsA("TextLabel") and obj.Text~="" then
+    text=text..obj.Text
+   end
+  end
+
+  table.insert(parts,string.sub(text,1,40))
+ end
+
+ return table.concat(parts,"|")
+end
+
+local lastBuffSig=nil
 local lastBuffAt=0
+
+local function handleBuff(gui,buttons)
+ local choice=buffPick
+
+ if choice>3 then
+  choice=math.random(1,3)
+ end
+
+ -- на время выбора не даём ensureSlot() менять слот
+ slotBusy=true
+ status.Text="BUFF: "..choice
+
+ local closed=false
+
+ for attempt=1,3 do
+  if not on then break end
+
+  press(SLOT_KEYS[choice])
+  task.wait(.8)
+
+  local ok2,gui2=pcall(findBuffMenu)
+
+  if not (ok2 and gui2) then
+   closed=true
+   break
+  end
+
+  if buttons and buttons[choice] then
+   clickButton(buttons[choice])
+   task.wait(.8)
+
+   local ok3,gui3=pcall(findBuffMenu)
+
+   if not (ok3 and gui3) then
+    closed=true
+    break
+   end
+  end
+ end
+
+ slotBusy=false
+ if on then status.Text="AUTO FARM ON" end
+
+ -- окно закрылось: запоминаем его имя, чтобы потом находить без слов-подсказок
+ if closed and knownBuffGui~=gui.Name then
+  knownBuffGui=gui.Name
+  settings.buffGui=knownBuffGui
+  saveSettings()
+ end
+end
 
 local function buffLoop(myRun)
  while on and myRun==runId do
@@ -1102,45 +1195,26 @@ local function buffLoop(myRun)
    local ok,gui,buttons=pcall(findBuffMenu)
 
    if not ok or not gui then
-    lastBuffGui=nil
-   elseif gui~=lastBuffGui or os.clock()-lastBuffAt>8 then
-    lastBuffGui=gui
-    lastBuffAt=os.clock()
+    lastBuffSig=nil
+   else
+    local okSig,sig=pcall(buffSignature,gui,buttons)
 
-    local choice=buffPick
+    if okSig and (sig~=lastBuffSig or os.clock()-lastBuffAt>8) then
+     lastBuffSig=sig
+     lastBuffAt=os.clock()
 
-    if choice>3 then
-     choice=math.random(1,3)
-    end
+     -- ошибка внутри не должна убивать цикл и оставлять слот заблокированным
+     local okH,err=pcall(handleBuff,gui,buttons)
 
-    -- на время выбора не даём ensureSlot() менять слот
-    slotBusy=true
-    status.Text="BUFF: "..choice
-
-    for attempt=1,3 do
-     if not on then break end
-
-     press(SLOT_KEYS[choice])
-     task.wait(.8)
-
-     local ok2,gui2=pcall(findBuffMenu)
-     if not (ok2 and gui2) then break end
-
-     if buttons and buttons[choice] then
-      clickButton(buttons[choice])
-      task.wait(.8)
-
-      local ok3,gui3=pcall(findBuffMenu)
-      if not (ok3 and gui3) then break end
+     if not okH then
+      slotBusy=false
+      dbg.Text="BUFF ERR: "..tostring(err)
      end
     end
-
-    slotBusy=false
-    if on then status.Text="AUTO FARM ON" end
    end
   end
 
-  task.wait(.7)
+  task.wait(.5)
  end
 end
 
@@ -1515,6 +1589,7 @@ end
 
 pickBtn.MouseButton1Click:Connect(function()
  remotePick=not remotePick
+ remoteFails=0
  settings.remote=remotePick
  saveSettings()
  refreshPick()
@@ -1650,8 +1725,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>3 then return end
- if env.AutoFarmVersion==3 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>4 then return end
+ if env.AutoFarmVersion==4 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
