@@ -21,7 +21,8 @@ local settings={
  aim=false,       -- авто-наведение
  antiStuck=false, -- антизастревание
  height=-8,       -- высота относительно моба (минус = ниже)
- dist=0           -- расстояние от моба (плюс = впереди, минус = сзади)
+ dist=0,          -- расстояние от моба (плюс = впереди, минус = сзади)
+ slot=2           -- какой слот держать в руках (1-9)
 }
 
 local function loadSettings()
@@ -50,6 +51,7 @@ local function loadSettings()
  settings.speed=math.clamp(settings.speed,5,300)
  settings.height=math.clamp(settings.height,-50,50)
  settings.dist=math.clamp(settings.dist,-50,50)
+ settings.slot=math.floor(math.clamp(settings.slot,1,9))
 end
 
 local function saveSettings()
@@ -92,7 +94,20 @@ local interacting=false
 local keyDone=false
 local doorDone=false
 local slotBusy=false
-local slot2Name=nil
+local slotName=nil
+local slotIndex=settings.slot
+
+local SLOT_KEYS={
+ Enum.KeyCode.One,
+ Enum.KeyCode.Two,
+ Enum.KeyCode.Three,
+ Enum.KeyCode.Four,
+ Enum.KeyCode.Five,
+ Enum.KeyCode.Six,
+ Enum.KeyCode.Seven,
+ Enum.KeyCode.Eight,
+ Enum.KeyCode.Nine
+}
 local characterVersion=0
 local lastPick=0
 
@@ -168,7 +183,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,288)
+f.Size=UDim2.fromOffset(165,318)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -191,7 +206,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,245)
+stop.Position=UDim2.fromOffset(85,275)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -247,10 +262,11 @@ local distMinus,distLabel,distPlus=makeRow(125)
 local noclipBtn=makeToggle(155)
 local aimBtn=makeToggle(185)
 local stuckBtn=makeToggle(215)
+local slotMinus,slotLabel,slotPlus=makeRow(245)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,245)
+startBtn.Position=UDim2.fromOffset(5,275)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -344,32 +360,34 @@ local function waitTool(timeout)
  return nil
 end
 
-local function ensureSlot2()
+local function ensureSlot()
  if slotBusy or not on then return end
 
  local c=me.Character
  local hum=c and c:FindFirstChildOfClass("Humanoid")
  if not hum or hum.Health<=0 then return end
 
- -- второй слот уже в руках: ничего не нажимаем (клавиша 2 переключает)
+ -- нужный слот уже в руках: ничего не нажимаем (клавиша слота переключает)
  local tool=equippedTool()
- if slot2Name and tool and tool.Name==slot2Name then return end
+ if slotName and tool and tool.Name==slotName then return end
 
  slotBusy=true
- status.Text="SELECTING SLOT 2"
+ local index=slotIndex
+ status.Text="SELECTING SLOT "..index
 
- -- если в руках что-то другое/неизвестное, сначала убираем, чтобы 2 не снял слот
+ -- если в руках что-то другое/неизвестное, сначала убираем, чтобы клавиша не сняла слот
  if tool then
   hum:UnequipTools()
   task.wait(.4)
  end
 
  if on then
-  press(Enum.KeyCode.Two)
+  press(SLOT_KEYS[index])
   local equipped=waitTool(1.5)
 
-  if equipped and not slot2Name then
-   slot2Name=equipped.Name
+  -- имя предмета запоминаем, только если слот не меняли по ходу
+  if equipped and not slotName and index==slotIndex then
+   slotName=equipped.Name
   end
  end
 
@@ -610,7 +628,7 @@ local function unlockDoors()
 
  if on then
   doorDone=true
-  ensureSlot2()
+  ensureSlot()
   task.wait(1)
  end
 
@@ -879,7 +897,7 @@ local function startFarm()
  task.spawn(function()
   while on and myRun==runId do
    if not interacting then
-    ensureSlot2()
+    ensureSlot()
    end
 
    task.wait(1)
@@ -985,7 +1003,7 @@ me.CharacterAdded:Connect(function()
    task.wait(1.5)
 
    if on and version==characterVersion then
-    ensureSlot2()
+    ensureSlot()
    end
   end)
  end
@@ -1001,7 +1019,7 @@ stop.MouseButton1Click:Connect(function()
 
  local x,y=mouseXY()
  V:SendMouseButtonEvent(x,y,0,false,game,0)
- V:SendKeyEvent(false,Enum.KeyCode.Two,false,game)
+ V:SendKeyEvent(false,SLOT_KEYS[slotIndex],false,game)
  V:SendKeyEvent(false,Enum.KeyCode.E,false,game)
 
  status.Text="AUTO FARM OFF"
@@ -1097,6 +1115,28 @@ distPlus.MouseButton1Click:Connect(function()
  refreshDist()
 end)
 
+local function refreshSlot()
+ slotLabel.Text="SLOT: "..slotIndex
+end
+
+local function changeSlot(value)
+ slotIndex=math.clamp(value,1,9)
+ settings.slot=slotIndex
+ saveSettings()
+ refreshSlot()
+
+ -- новый слот: имя предмета узнаём заново, тут же берём его в руки
+ slotName=nil
+end
+
+slotMinus.MouseButton1Click:Connect(function()
+ changeSlot(slotIndex-1)
+end)
+
+slotPlus.MouseButton1Click:Connect(function()
+ changeSlot(slotIndex+1)
+end)
+
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
@@ -1167,6 +1207,7 @@ refreshDist()
 refreshNoclip()
 refreshAim()
 refreshStuck()
+refreshSlot()
 
 startFarm()
 ]==]
