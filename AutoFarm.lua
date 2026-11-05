@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=7
+local VERSION=6
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -27,9 +27,7 @@ local settings={
  remote=true,     -- ключи и двери берём без телепорта (запасной способ: с телепортом)
  buff=true,       -- авто-выбор баффов после зачистки
  buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
- buffGui="",      -- имя окна баффов (запоминается после первого успешного выбора)
- damageMult=2,    -- множитель урона (1 = обычный, 2 = x2, 3 = x3 и т.д.)
- damageEnabled=true -- включить множитель урона
+ buffGui=""       -- имя окна баффов (запоминается после первого успешного выбора)
 }
 
 local function loadSettings()
@@ -60,7 +58,6 @@ local function loadSettings()
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
  settings.buffPick=math.floor(math.clamp(settings.buffPick,1,4))
- settings.damageMult=math.clamp(settings.damageMult,1,100)
 end
 
 local function saveSettings()
@@ -158,10 +155,6 @@ local NOCLIP_TIME=2       -- сколько секунд авто-noclip дер�
 local REPOSITION_DIST=6   -- телепорт снова, только если ушли дальше от точки (studs)
 local TARGET_TIMEOUT=25   -- если моб не умирает столько секунд, берём другого (0 = выключено)
 
--- НОВОЕ: настройки множителя урона
-local damageMult=settings.damageMult -- множитель урона (1 = обычный, 2 = x2 и т.д.)
-local damageEnabled=settings.damageEnabled -- включить/выключить множитель урона
-
 local tpTarget=nil
 local lastTP=0
 local lostAt=0
@@ -219,7 +212,7 @@ g.IgnoreGuiInset=true
 g.Parent=Core
 
 local f=Instance.new("Frame",g)
-f.Size=UDim2.fromOffset(165,380) -- увеличен размер для новых кнопок
+f.Size=UDim2.fromOffset(165,320)
 f.Position=UDim2.new(.5,-82,.5,0)
 f.BackgroundColor3=Color3.fromRGB(35,35,45)
 f.Active=true
@@ -242,7 +235,7 @@ ver.BackgroundTransparency=1
 
 local stop=Instance.new("TextButton",f)
 stop.Size=UDim2.fromOffset(75,32)
-stop.Position=UDim2.fromOffset(85,340)
+stop.Position=UDim2.fromOffset(85,280)
 stop.Text="STOP"
 stop.TextColor3=Color3.new(1,1,1)
 stop.BackgroundColor3=Color3.fromRGB(160,40,40)
@@ -259,11 +252,11 @@ dbg.TextWrapped=true
 -- Прокручиваемая область с настройками (меню не вылезает за экран)
 local body=Instance.new("ScrollingFrame",f)
 body.Position=UDim2.fromOffset(0,65)
-body.Size=UDim2.new(1,0,0,270)
+body.Size=UDim2.new(1,0,0,210)
 body.BackgroundTransparency=1
 body.BorderSizePixel=0
 body.ScrollBarThickness=4
-body.CanvasSize=UDim2.new(0,0,0,422) -- увеличен размер для новых элементов
+body.CanvasSize=UDim2.new(0,0,0,362)
 
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
@@ -313,13 +306,10 @@ local pickBtn=makeToggle(240)
 local buffBtn=makeToggle(270)
 local buffMinus,buffLabel,buffPlus=makeRow(300)
 local scanBtn=makeToggle(330)
--- НОВОЕ: элементы для множителя урона
-local dmgBtn=makeToggle(360)
-local dmgMinus,dmgLabel,dmgPlus=makeRow(390)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
-startBtn.Position=UDim2.fromOffset(5,340)
+startBtn.Position=UDim2.fromOffset(5,280)
 startBtn.Text="START"
 startBtn.TextColor3=Color3.new(1,1,1)
 startBtn.BackgroundColor3=Color3.fromRGB(40,130,60)
@@ -456,50 +446,6 @@ local function ensureSlot()
 
  slotBusy=false
  if on then status.Text="AUTO FARM ON" end
-end
-
--- НОВОЕ: функция применения множителя урона
-local function applyDamageMultiplier()
- if not damageEnabled or damageMult<=1 then return end
-
- -- Пытаемся найти и изменить урон оружия
- local tool=equippedTool()
- if not tool then return end
-
- -- Проверяем разные возможные места хранения урона
- local damageValues={}
- 
- -- Ищем все значения урона в инструменте
- for _,obj in ipairs(tool:GetDescendants()) do
-  if obj:IsA("NumberValue") or obj:IsA("IntValue") then
-   local name=obj.Name:lower()
-   if name:find("damage") or name:find("dmg") or name:find("урон") then
-    table.insert(damageValues,obj)
-   end
-  end
- end
-
- -- Если нашли значения урона, умножаем их
- for _,dmg in ipairs(damageValues) do
-  dmg.Value=dmg.Value*damageMult
- end
-
- -- Также пытаемся найти и изменить урон через RemoteEvent/RemoteFunction
- -- Это может не работать во всех играх, но попробуем
- local toolDamage=tool:FindFirstChild("Damage")
- if toolDamage and toolDamage:IsA("NumberValue") then
-  toolDamage.Value=toolDamage.Value*damageMult
- end
-end
-
--- НОВОЕ: функция для постоянного применения множителя (вызывается периодически)
-local function damageLoop(myRun)
- while on and myRun==runId do
-  if damageEnabled and damageMult>1 then
-   pcall(applyDamageMultiplier)
-  end
-  task.wait(2) -- проверяем каждые 2 секунды
- end
 end
 
 local function nearest(r,skip)
@@ -1484,7 +1430,6 @@ local function startFarm()
  task.spawn(retryLoop,myRun)
  task.spawn(buffLoop,myRun)
  task.spawn(keyDoorLoop,myRun)
- task.spawn(damageLoop,myRun) -- НОВОЕ: запускаем цикл множителя урона
 end
 
 me.CharacterAdded:Connect(function()
@@ -1498,9 +1443,6 @@ me.CharacterAdded:Connect(function()
 
    if on and version==characterVersion then
     ensureSlot()
-    if damageEnabled then
-     pcall(applyDamageMultiplier)
-    end
    end
   end)
  end
@@ -1787,52 +1729,6 @@ stuckBtn.MouseButton1Click:Connect(function()
  end
 end)
 
--- НОВОЕ: функции для множителя урона
-local function refreshDmg()
- if damageEnabled then
-  dmgBtn.Text="УРОН x"..damageMult..": ВКЛ"
-  dmgBtn.BackgroundColor3=ON_COLOR
- else
-  dmgBtn.Text="УРОН x"..damageMult..": ВЫКЛ"
-  dmgBtn.BackgroundColor3=OFF_COLOR
- end
-end
-
-dmgBtn.MouseButton1Click:Connect(function()
- damageEnabled=not damageEnabled
- settings.damageEnabled=damageEnabled
- saveSettings()
- refreshDmg()
-
- if on and damageEnabled then
-  pcall(applyDamageMultiplier)
- end
-end)
-
-local function refreshDmgMult()
- dmgLabel.Text="МНОЖ: x"..damageMult
-end
-
-local function changeDmgMult(value)
- damageMult=math.clamp(value,1,100)
- settings.damageMult=damageMult
- saveSettings()
- refreshDmgMult()
- refreshDmg()
-
- if on and damageEnabled then
-  pcall(applyDamageMultiplier)
- end
-end
-
-dmgMinus.MouseButton1Click:Connect(function()
- changeDmgMult(damageMult-1)
-end)
-
-dmgPlus.MouseButton1Click:Connect(function()
- changeDmgMult(damageMult+1)
-end)
-
 startBtn.MouseButton1Click:Connect(function()
  if on then return end
  startFarm()
@@ -1849,8 +1745,6 @@ refreshMode()
 refreshPick()
 refreshBuff()
 refreshBuffPick()
-refreshDmg() -- НОВОЕ: обновляем отображение множителя урона
-refreshDmgMult() -- НОВОЕ: обновляем отображение множителя
 
 startFarm()
 ]==]
@@ -1862,8 +1756,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>7 then return end
- if env.AutoFarmVersion==7 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>6 then return end
+ if env.AutoFarmVersion==6 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
