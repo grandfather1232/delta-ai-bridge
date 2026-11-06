@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=7
+local VERSION=8
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -1091,6 +1091,11 @@ local BUFF_IGNORE={
  ControlGui=true
 }
 
+-- Известные окна выбора по имени (из скана): у BindingVows слов вроде "buff" нет
+local BUFF_GUIS={
+ BindingVows=true
+}
+
 -- Объект виден: все родители до PlayerGui включены
 local function guiVisible(obj)
  local o=obj
@@ -1141,7 +1146,9 @@ local function findBuffMenu()
     end
    end
 
-   if hit then
+   local known=BUFF_GUIS[gui.Name]
+
+   if hit or known then
     -- нужно ровно 3 варианта: всего 3 кнопки в окне или группа из 3 с общим родителем
     local chosen=nil
 
@@ -1161,6 +1168,27 @@ local function findBuffMenu()
        break
       end
      end
+    end
+
+    -- известное окно: кнопок больше трёх (например 4), варианты - три кнопки
+    -- одинакового размера; если таких нет, берём первые три
+    if not chosen and known and #buttons>=3 then
+     local bySize={}
+
+     for _,button in ipairs(buttons) do
+      local key=math.floor(button.AbsoluteSize.X/4)..","..math.floor(button.AbsoluteSize.Y/4)
+      bySize[key]=bySize[key] or {}
+      table.insert(bySize[key],button)
+     end
+
+     for _,list in pairs(bySize) do
+      if #list==3 then
+       chosen=list
+       break
+      end
+     end
+
+     chosen=chosen or {buttons[1],buttons[2],buttons[3]}
     end
 
     if chosen then
@@ -1322,11 +1350,26 @@ local function scanGuis()
   if gui:IsA("ScreenGui") then
    local count=0
    local texts={}
+   local details={}
 
    for _,obj in ipairs(gui:GetDescendants()) do
     if obj:IsA("GuiObject") and guiVisible(obj) then
      if obj:IsA("GuiButton") then
       count=count+1
+
+      if #details<10 then
+       local label=""
+
+       if obj:IsA("TextButton") then
+        label=string.sub(obj.Text,1,16)
+       end
+
+       table.insert(details,
+        "   - "..obj.Name.." ["..obj.ClassName.."] '"..label.."' "
+        ..math.floor(obj.AbsoluteSize.X).."x"..math.floor(obj.AbsoluteSize.Y)
+        .." @"..math.floor(obj.AbsolutePosition.X)..","..math.floor(obj.AbsolutePosition.Y)
+        .." parent="..obj.Parent.Name)
+      end
      end
 
      if (obj:IsA("TextLabel") or obj:IsA("TextButton"))
@@ -1340,6 +1383,14 @@ local function scanGuis()
     gui.Name.." | on="..tostring(gui.Enabled)
     .." | buttons="..count
     .." | "..table.concat(texts," / "))
+
+   -- подробности только для окон с кнопками (кроме обычных панелей)
+   if count>0 and count<=8 and gui.Name~="TopbarStandard" and gui.Name~="Main"
+   and gui.Name~="BackpackGui" and gui.Name~="TopbarStandardClipped" then
+    for _,line in ipairs(details) do
+     table.insert(lines,line)
+    end
+   end
   end
  end
 
@@ -1823,8 +1874,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>7 then return end
- if env.AutoFarmVersion==7 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>8 then return end
+ if env.AutoFarmVersion==8 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
