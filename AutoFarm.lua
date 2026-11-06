@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=6
+local VERSION=7
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -27,7 +27,8 @@ local settings={
  remote=true,     -- ключи и двери берём без телепорта (запасной способ: с телепортом)
  buff=true,       -- авто-выбор баффов после зачистки
  buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
- buffGui=""       -- имя окна баффов (запоминается после первого успешного выбора)
+ buffGui="",      -- (не используется)
+ slotTools={}      -- имена предметов по слотам, запоминаются между серверами
 }
 
 local function loadSettings()
@@ -58,6 +59,12 @@ local function loadSettings()
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
  settings.buffPick=math.floor(math.clamp(settings.buffPick,1,4))
+
+ for key,value in pairs(settings.slotTools) do
+  if type(value)~="string" then
+   settings.slotTools[key]=nil
+  end
+ end
 end
 
 local function saveSettings()
@@ -117,8 +124,11 @@ local interacting=false
 local keyDone=false
 local doorDone=false
 local slotBusy=false
-local slotName=nil
 local slotIndex=settings.slot
+local slotName=settings.slotTools[tostring(slotIndex)] -- имя предмета этого слота (если уже узнали)
+local lastEquipAt=0
+local missingSince=0
+local startedAt=os.clock()
 
 local SLOT_KEYS={
  Enum.KeyCode.One,
@@ -413,38 +423,81 @@ local function waitTool(timeout)
  return nil
 end
 
+-- Держим нужный слот в руках. Чтобы не "мигать" (надел-снял):
+--  * имя предмета слота запоминаем и сохраняем между серверами;
+--  * жмём клавишу только если нужного предмета нет в руках дольше секунды;
+--  * между нажатиями минимум 2.5 сек и первые 3 сек после запуска не жмём;
+--  * ничего не делаем, пока рюкзак пуст.
 local function ensureSlot()
  if slotBusy or not on then return end
+ if os.clock()-startedAt<3 then return end
 
  local c=me.Character
  local hum=c and c:FindFirstChildOfClass("Humanoid")
  if not hum or hum.Health<=0 then return end
 
- -- нужный слот уже в руках: ничего не нажимаем (клавиша слота переключает)
+ local now=os.clock()
  local tool=equippedTool()
- if slotName and tool and tool.Name==slotName then return end
 
- slotBusy=true
- local index=slotIndex
- status.Text="SELECTING SLOT "..index
-
- -- если в руках что-то другое/неизвестное, сначала убираем, чтобы клавиша не сняла слот
- if tool then
-  hum:UnequipTools()
-  task.wait(.4)
+ -- нужный предмет уже в руках
+ if slotName and tool and tool.Name==slotName then
+  missingSince=0
+  return
  end
 
- if on then
-  press(SLOT_KEYS[index])
-  local equipped=waitTool(1.5)
+ -- не нажимаем сразу: игра может надевать/снимать предмет сама
+ if missingSince==0 then missingSince=now end
+ if now-missingSince<1 then return end
+ if now-lastEquipAt<2.5 then return end
 
-  -- имя предмета запоминаем, только если слот не меняли по ходу
-  if equipped and not slotName and index==slotIndex then
-   slotName=equipped.Name
+ -- нечего экипировать (рюкзак ещё не загрузился)
+ local backpack=me:FindFirstChildOfClass("Backpack")
+ if not tool and not (backpack and #backpack:GetChildren()>0) then return end
+
+ slotBusy=true
+ lastEquipAt=now
+
+ local index=slotIndex
+ local before=tool and tool.Name
+ status.Text="SELECTING SLOT "..index
+
+ press(SLOT_KEYS[index])
+
+ -- ждём, пока в руках что-то изменится
+ local after=nil
+ local deadline=os.clock()+1.5
+
+ while on and os.clock()<deadline do
+  local current=equippedTool()
+
+  if current and current.Name~=before then
+   after=current
+   break
   end
+
+  if not current and before then
+   after=false
+   break
+  end
+
+  task.wait(.1)
+ end
+
+ -- в руках было что-то и стало пусто: мы сняли нужный предмет, надеваем снова
+ if after==false then
+  press(SLOT_KEYS[index])
+  after=waitTool(1.5)
+ end
+
+ -- запоминаем имя предмета этого слота (и сохраняем для следующих серверов)
+ if after and index==slotIndex and slotName~=after.Name then
+  slotName=after.Name
+  settings.slotTools[tostring(index)]=slotName
+  saveSettings()
  end
 
  slotBusy=false
+ missingSince=0
  if on then status.Text="AUTO FARM ON" end
 end
 
@@ -1065,6 +1118,11 @@ end
 
 -- Возвращает окно выбора и список его кнопок слева направо (или nil)
 local function findBuffMenu()
+ -- вне подземелья (лобби) выбор баффов не нужен, а окна лобби дают ложные срабатывания
+ if not workspace:FindFirstChild("Mobs") and startedCount==0 then
+  return nil
+ end
+
  for _,gui in ipairs(pg:GetChildren()) do
   if gui:IsA("ScreenGui") and gui.Enabled and not BUFF_IGNORE[gui.Name] then
    local buttons={}
@@ -1083,35 +1141,39 @@ local function findBuffMenu()
     end
    end
 
-   if (hit or gui.Name==knownBuffGui) and #buttons>=3 then
-    -- если есть ровно 3 кнопки с общим родителем, берём их
-    local groups={}
-
-    for _,button in ipairs(buttons) do
-     groups[button.Parent]=groups[button.Parent] or {}
-     table.insert(groups[button.Parent],button)
-    end
-
+   if hit then
+    -- нужно ровно 3 варианта: всего 3 кнопки в окне или группа из 3 с общим родителем
     local chosen=nil
 
-    for _,list in pairs(groups) do
-     if #list==3 then
-      chosen=list
-      break
+    if #buttons==3 then
+     chosen=buttons
+    else
+     local groups={}
+
+     for _,button in ipairs(buttons) do
+      groups[button.Parent]=groups[button.Parent] or {}
+      table.insert(groups[button.Parent],button)
+     end
+
+     for _,list in pairs(groups) do
+      if #list==3 then
+       chosen=list
+       break
+      end
      end
     end
 
-    chosen=chosen or buttons
+    if chosen then
+     table.sort(chosen,function(a,b)
+      if math.abs(a.AbsolutePosition.X-b.AbsolutePosition.X)>2 then
+       return a.AbsolutePosition.X<b.AbsolutePosition.X
+      end
 
-    table.sort(chosen,function(a,b)
-     if math.abs(a.AbsolutePosition.X-b.AbsolutePosition.X)>2 then
-      return a.AbsolutePosition.X<b.AbsolutePosition.X
-     end
+      return a.AbsolutePosition.Y<b.AbsolutePosition.Y
+     end)
 
-     return a.AbsolutePosition.Y<b.AbsolutePosition.Y
-    end)
-
-    return gui,chosen
+     return gui,chosen
+    end
    end
   end
  end
@@ -1209,14 +1271,9 @@ local function handleBuff(gui,buttons)
 
  slotBusy=false
  if on then status.Text="AUTO FARM ON" end
-
- -- окно закрылось: запоминаем его имя, чтобы потом находить без слов-подсказок
- if closed and knownBuffGui~=gui.Name then
-  knownBuffGui=gui.Name
-  settings.buffGui=knownBuffGui
-  saveSettings()
- end
 end
+
+local seenSince=0
 
 local function buffLoop(myRun)
  while on and myRun==runId do
@@ -1227,19 +1284,27 @@ local function buffLoop(myRun)
 
    if not ok or not gui then
     lastBuffSig=nil
+    seenSince=0
    else
-    local okSig,sig=pcall(buffSignature,gui,buttons)
+    local now=os.clock()
 
-    if okSig and (sig~=lastBuffSig or os.clock()-lastBuffAt>8) then
-     lastBuffSig=sig
-     lastBuffAt=os.clock()
+    -- окно должно продержаться полсекунды (чтобы не реагировать на мигание)
+    if seenSince==0 then seenSince=now end
 
-     -- ошибка внутри не должна убивать цикл и оставлять слот заблокированным
-     local okH,err=pcall(handleBuff,gui,buttons)
+    if now-seenSince>=.5 then
+     local okSig,sig=pcall(buffSignature,gui,buttons)
 
-     if not okH then
-      slotBusy=false
-      dbg.Text="BUFF ERR: "..tostring(err)
+     if okSig and (sig~=lastBuffSig or now-lastBuffAt>8) then
+      lastBuffSig=sig
+      lastBuffAt=now
+
+      -- ошибка внутри не должна убивать цикл и оставлять слот заблокированным
+      local okH,err=pcall(handleBuff,gui,buttons)
+
+      if not okH then
+       slotBusy=false
+       dbg.Text="BUFF ERR: "..tostring(err)
+      end
      end
     end
    end
@@ -1579,8 +1644,10 @@ local function changeSlot(value)
  saveSettings()
  refreshSlot()
 
- -- новый слот: имя предмета узнаём заново, тут же берём его в руки
- slotName=nil
+ -- новый слот: берём известное имя предмета (если есть) и переключаемся сразу
+ slotName=settings.slotTools[tostring(slotIndex)]
+ missingSince=0
+ lastEquipAt=0
 end
 
 slotMinus.MouseButton1Click:Connect(function()
@@ -1756,8 +1823,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>6 then return end
- if env.AutoFarmVersion==6 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>7 then return end
+ if env.AutoFarmVersion==7 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
