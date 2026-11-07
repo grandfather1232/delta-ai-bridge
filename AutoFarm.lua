@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=8
+local VERSION=9
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -28,7 +28,10 @@ local settings={
  buff=true,       -- авто-выбор баффов после зачистки
  buffPick=4,      -- какой вариант брать: 1, 2, 3 или 4 = случайный
  buffGui="",      -- (не используется)
- slotTools={}      -- имена предметов по слотам, запоминаются между серверами
+ slotTools={},     -- имена предметов по слотам, запоминаются между серверами
+ keyDelay=.2,     -- пауза между клавишами способностей (сек)
+ cycleDelay=.3,   -- пауза между циклами способностей (сек)
+ clickDelay=.1    -- удержание и пауза левой кнопки мыши (сек)
 }
 
 local function loadSettings()
@@ -59,6 +62,9 @@ local function loadSettings()
  settings.dist=math.clamp(settings.dist,-50,50)
  settings.slot=math.floor(math.clamp(settings.slot,1,9))
  settings.buffPick=math.floor(math.clamp(settings.buffPick,1,4))
+ settings.keyDelay=math.clamp(settings.keyDelay,0,2)
+ settings.cycleDelay=math.clamp(settings.cycleDelay,0,3)
+ settings.clickDelay=math.clamp(settings.clickDelay,.02,1)
 
  for key,value in pairs(settings.slotTools) do
   if type(value)~="string" then
@@ -154,6 +160,9 @@ local buffEnabled=settings.buff   -- авто-выбор баффов, кноп�
 local buffPick=settings.buffPick  -- 1, 2, 3 или 4 (случайный)
 local knownBuffGui=settings.buffGui -- имя окна баффов, запомненное раньше
 local remoteFails=0               -- сколько раз подряд не сработал подбор на расстоянии
+local keyDelay=settings.keyDelay   -- пауза между клавишами способностей
+local cycleDelay=settings.cycleDelay -- пауза между циклами способностей
+local clickDelay=settings.clickDelay -- темп кликов мыши
 local runId=0            -- номер запуска (чтобы старые циклы не жили после STOP/START)
 local OFFSET_Y=settings.height   -- высота точки остановки относительно моба (минус = ниже)
 local OFFSET_DIST=settings.dist   -- расстояние от моба по горизонтали (плюс = впереди, минус = сзади)
@@ -266,7 +275,7 @@ body.Size=UDim2.new(1,0,0,210)
 body.BackgroundTransparency=1
 body.BorderSizePixel=0
 body.ScrollBarThickness=4
-body.CanvasSize=UDim2.new(0,0,0,362)
+body.CanvasSize=UDim2.new(0,0,0,452)
 
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
@@ -316,6 +325,9 @@ local pickBtn=makeToggle(240)
 local buffBtn=makeToggle(270)
 local buffMinus,buffLabel,buffPlus=makeRow(300)
 local scanBtn=makeToggle(330)
+local keyMinus,keyLabel,keyPlus=makeRow(360)
+local cycMinus,cycLabel,cycPlus=makeRow(390)
+local clkMinus,clkLabel,clkPlus=makeRow(420)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
@@ -542,7 +554,7 @@ local function attackSkills()
 
  for i,k in ipairs(keys) do
   if not on then return end
-  if i>1 then task.wait(.4) end
+  if i>1 and keyDelay>0 then task.wait(keyDelay) end
   press(k)
  end
 end
@@ -1464,7 +1476,7 @@ local function startFarm()
   if not on or interacting then return end
 
   -- решение о цели раз в 0.2 сек
-  if os.clock()-lastPick>=.2 then
+  if os.clock()-lastPick>=.1 then
    lastPick=os.clock()
 
    local ok,err=pcall(farmStep)
@@ -1492,12 +1504,12 @@ local function startFarm()
 
     local x,y=clickXY()
     V:SendMouseButtonEvent(x,y,0,true,game,0)
-    task.wait(.1)
+    task.wait(clickDelay)
     x,y=clickXY()
     V:SendMouseButtonEvent(x,y,0,false,game,0)
    end
 
-   task.wait(.1)
+   task.wait(clickDelay)
   end
 
   local x,y=mouseXY()
@@ -1539,7 +1551,7 @@ local function startFarm()
     attackSkills()
    end
 
-   task.wait(1)
+   task.wait(math.max(cycleDelay,.05))
   end
  end)
 
@@ -1788,6 +1800,58 @@ scanBtn.MouseButton1Click:Connect(function()
  showReport(ok and report or ("ERR: "..tostring(report)))
 end)
 
+local function round2(value)
+ return math.floor(value*100+.5)/100
+end
+
+local function refreshTimings()
+ keyLabel.Text="КЛАВИШИ: "..keyDelay
+ cycLabel.Text="ЦИКЛ: "..cycleDelay
+ clkLabel.Text="КЛИК: "..clickDelay
+end
+
+keyMinus.MouseButton1Click:Connect(function()
+ keyDelay=math.max(0,round2(keyDelay-.05))
+ settings.keyDelay=keyDelay
+ saveSettings()
+ refreshTimings()
+end)
+
+keyPlus.MouseButton1Click:Connect(function()
+ keyDelay=math.min(2,round2(keyDelay+.05))
+ settings.keyDelay=keyDelay
+ saveSettings()
+ refreshTimings()
+end)
+
+cycMinus.MouseButton1Click:Connect(function()
+ cycleDelay=math.max(0,round2(cycleDelay-.05))
+ settings.cycleDelay=cycleDelay
+ saveSettings()
+ refreshTimings()
+end)
+
+cycPlus.MouseButton1Click:Connect(function()
+ cycleDelay=math.min(3,round2(cycleDelay+.05))
+ settings.cycleDelay=cycleDelay
+ saveSettings()
+ refreshTimings()
+end)
+
+clkMinus.MouseButton1Click:Connect(function()
+ clickDelay=math.max(.02,round2(clickDelay-.01))
+ settings.clickDelay=clickDelay
+ saveSettings()
+ refreshTimings()
+end)
+
+clkPlus.MouseButton1Click:Connect(function()
+ clickDelay=math.min(1,round2(clickDelay+.01))
+ settings.clickDelay=clickDelay
+ saveSettings()
+ refreshTimings()
+end)
+
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
@@ -1863,6 +1927,7 @@ refreshMode()
 refreshPick()
 refreshBuff()
 refreshBuffPick()
+refreshTimings()
 
 startFarm()
 ]==]
@@ -1874,8 +1939,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>8 then return end
- if env.AutoFarmVersion==8 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>9 then return end
+ if env.AutoFarmVersion==9 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
