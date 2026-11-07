@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=9
+local VERSION=10
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -110,11 +110,10 @@ local function refreshPg()
  end
 end
 
-local services=RS.ReplicatedStorage.Packages.Knit.Services
-
 -- Remote-объекты берём напрямую (без FindFirstChild), но только в момент вызова,
--- внутри pcall: в лобби часть из них (например VoteOn) ещё не существует,
--- и раньше это роняло весь скрипт при запуске.
+-- внутри pcall. Папка Knit.Services создаётся игрой не сразу после входа,
+-- а в лобби часть Remote (например VoteOn) вообще отсутствует: обращение
+-- на старте роняло весь скрипт ("Services is not a valid member of Knit").
 
 pcall(function()
  local old=Core:FindFirstChild("AutoFarm")
@@ -590,7 +589,7 @@ end
 task.spawn(function()
  for attempt=1,150 do
   local ok=pcall(function()
-   services.DungeonService.RE.DungeonStarted.OnClientEvent:Connect(function()
+   RS.ReplicatedStorage.Packages.Knit.Services.DungeonService.RE.DungeonStarted.OnClientEvent:Connect(function()
     startedCount=startedCount+1
     keyDone=false
     doorDone=false
@@ -603,12 +602,34 @@ task.spawn(function()
  end
 end)
 
-local function startDungeon()
+local function startDungeon(tries)
  status.Text="STARTING DUNGEON"
 
- local ok=pcall(function()
-  services.DungeonService.RF.StartDungeon:InvokeServer()
- end)
+ -- Папка Services появляется не сразу после входа: ждём её (до ~60 сек)
+ local remote=nil
+
+ for attempt=1,(tries or 30) do
+  if not on then return end
+
+  local found,result=pcall(function()
+   return RS.ReplicatedStorage.Packages.Knit.Services.DungeonService.RF.StartDungeon
+  end)
+
+  if found and result then
+   remote=result
+   break
+  end
+
+  task.wait(2)
+ end
+
+ local ok=false
+
+ if remote then
+  ok=pcall(function()
+   remote:InvokeServer()
+  end)
+ end
 
  if ok then
   status.Text="AUTO FARM ON"
@@ -628,7 +649,7 @@ local function retryLoop(myRun)
    local before=startedCount
 
    local ok=pcall(function()
-    services.PartyService.RF.VoteOn:InvokeServer("Retry")
+    RS.ReplicatedStorage.Packages.Knit.Services.PartyService.RF.VoteOn:InvokeServer("Retry")
    end)
 
    if ok then
@@ -642,7 +663,7 @@ local function retryLoop(myRun)
     end
 
     if on and startedCount==before then
-     startDungeon()
+     startDungeon(3)
     end
    else
     status.Text="RETRY ERROR"
@@ -1939,8 +1960,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>9 then return end
- if env.AutoFarmVersion==9 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>10 then return end
+ if env.AutoFarmVersion==10 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
