@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=12
+local VERSION=13
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -33,7 +33,8 @@ local settings={
  cycleDelay=.3,   -- пауза между циклами способностей (сек)
  clickDelay=.1,   -- удержание и пауза левой кнопки мыши (сек)
  keepDist=true,   -- держаться подальше от остальных мобов, чтобы не окружили
- keepRadius=10    -- на сколько studs отталкиваться от каждого стороннего моба
+ keepRadius=10,   -- на сколько studs отталкиваться от каждого стороннего моба
+ skillKeys="F,F,C,V" -- какие клавиши жать по очереди (через запятую), редактируется в меню
 }
 
 local function loadSettings()
@@ -68,6 +69,10 @@ local function loadSettings()
  settings.cycleDelay=math.clamp(settings.cycleDelay,0,3)
  settings.clickDelay=math.clamp(settings.clickDelay,.02,1)
  settings.keepRadius=math.clamp(settings.keepRadius,0,40)
+
+ if type(settings.skillKeys)~="string" or settings.skillKeys=="" then
+  settings.skillKeys="F,F,C,V"
+ end
 
  for key,value in pairs(settings.slotTools) do
   if type(value)~="string" then
@@ -137,6 +142,35 @@ local slotName=settings.slotTools[tostring(slotIndex)] -- имя предмет�
 local lastEquipAt=0
 local missingSince=0
 local startedAt=os.clock()
+
+-- Таблица "имя клавиши" -> KeyCode, для разбора списка клавиш из меню
+local KEYCODE_BY_NAME={}
+
+for _,item in ipairs(Enum.KeyCode:GetEnumItems()) do
+ KEYCODE_BY_NAME[item.Name:upper()]=item
+end
+
+-- Разбирает строку вида "F,F,C,V" в список KeyCode; неизвестные клавиши
+-- пропускаются. Возвращает список и "чистую" строку (без ошибок пользователя)
+local function parseSkillKeys(text)
+ local list={}
+ local clean={}
+
+ for token in text:gmatch("[^,]+") do
+  token=token:gsub("^%s+",""):gsub("%s+$","")
+  local key=KEYCODE_BY_NAME[token:upper()]
+
+  if key then
+   table.insert(list,key)
+   table.insert(clean,token:upper())
+  end
+ end
+
+ return list,table.concat(clean,",")
+end
+
+local skillKeys=select(1,parseSkillKeys(settings.skillKeys)) -- список клавиш для attackSkills
+local skillKeysStr=settings.skillKeys                        -- та же строка для показа в меню
 
 local SLOT_KEYS={
  Enum.KeyCode.One,
@@ -279,7 +313,7 @@ body.Size=UDim2.new(1,0,0,210)
 body.BackgroundTransparency=1
 body.BorderSizePixel=0
 body.ScrollBarThickness=4
-body.CanvasSize=UDim2.new(0,0,0,512)
+body.CanvasSize=UDim2.new(0,0,0,580)
 
 -- Строка "минус / значение / плюс"
 local function makeRow(y)
@@ -334,6 +368,20 @@ local cycMinus,cycLabel,cycPlus=makeRow(390)
 local clkMinus,clkLabel,clkPlus=makeRow(420)
 local keepBtn=makeToggle(450)
 local keepMinus,keepLabel,keepPlus=makeRow(480)
+
+local comboBox=Instance.new("TextBox",body)
+comboBox.Size=UDim2.new(1,-10,0,26)
+comboBox.Position=UDim2.fromOffset(5,510)
+comboBox.Text=skillKeysStr
+comboBox.PlaceholderText="F,F,C,V"
+comboBox.ClearTextOnFocus=false
+comboBox.TextColor3=Color3.new(1,1,1)
+comboBox.BackgroundColor3=Color3.fromRGB(25,25,33)
+comboBox.TextSize=12
+
+local comboBtn=makeToggle(540)
+comboBtn.Text="СОХРАНИТЬ КОМБО"
+comboBtn.BackgroundColor3=Color3.fromRGB(60,60,80)
 
 local startBtn=Instance.new("TextButton",f)
 startBtn.Size=UDim2.fromOffset(75,32)
@@ -545,20 +593,9 @@ local function nearest(r,skip)
 end
 
 -- Способности по очереди: первая сразу, дальше пауза 0.4 между клавишами
+-- Способности по очереди: клавиши и их число задаются в меню (SKILLKEYS)
 local function attackSkills()
- local keys={
-  Enum.KeyCode.F,
-  Enum.KeyCode.F,
-  Enum.KeyCode.C,
-  Enum.KeyCode.V
- }
-
- -- слот 1 в руках: дополнительная атака на R
- if slotIndex==1 and equippedTool() then
-  table.insert(keys,Enum.KeyCode.R)
- end
-
- for i,k in ipairs(keys) do
+ for i,k in ipairs(skillKeys) do
   if not on then return end
   if i>1 and keyDelay>0 then task.wait(keyDelay) end
   press(k)
@@ -1975,6 +2012,26 @@ keepPlus.MouseButton1Click:Connect(function()
  refreshKeepRadius()
 end)
 
+local function refreshCombo()
+ comboBox.Text=skillKeysStr
+end
+
+comboBtn.MouseButton1Click:Connect(function()
+ local list,clean=parseSkillKeys(comboBox.Text)
+
+ if #list==0 then
+  -- пусто или все клавиши не распознаны: возвращаем прежнее значение
+  refreshCombo()
+  return
+ end
+
+ skillKeys=list
+ skillKeysStr=clean
+ settings.skillKeys=skillKeysStr
+ saveSettings()
+ refreshCombo()
+end)
+
 local function refreshNoclip()
  if noclipEnabled then
   noclipBtn.Text="NOCLIP: ON"
@@ -2053,6 +2110,7 @@ refreshBuffPick()
 refreshTimings()
 refreshKeep()
 refreshKeepRadius()
+refreshCombo()
 
 startFarm()
 ]==]
@@ -2064,8 +2122,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>12 then return end
- if env.AutoFarmVersion==12 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>13 then return end
+ if env.AutoFarmVersion==13 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
