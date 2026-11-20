@@ -1,5 +1,5 @@
 local SCRIPT = [==[
-local VERSION=11
+local VERSION=12
 local env=(getgenv and getgenv()) or _G
 
 -- Останавливаем предыдущий экземпляр и помечаем, какая версия работает
@@ -1118,7 +1118,15 @@ local function farmStep()
   winPos=nil
  end
 
- pcall(ensureHold,root)
+
+ -- Удержание (нулевая скорость через физику) нужно только когда у персонажа
+ -- отключены столкновения (noclip), иначе оно мешает обычной ходьбе,
+ -- не давая персонажу сдвинуться с места.
+ if noclipEnabled or autoNoclip then
+  pcall(ensureHold,root)
+ else
+  pcall(releaseHold)
+ end
 
  dbg.Text=target.Name.." d="..math.floor(dist)..(gliding and " GO" or " AT")..(autoNoclip and " NC" or "")
 end
@@ -1812,6 +1820,10 @@ modeBtn.MouseButton1Click:Connect(function()
  settings.tp=teleportMode
  saveSettings()
  refreshMode()
+
+ -- форсируем пересчёт движения, даже если персонаж уже "на месте"
+ tpTarget=nil
+ winPos=nil
 end)
 
 local function refreshPick()
@@ -2052,8 +2064,8 @@ local BOOT_TEMPLATE=%s
 local env=(getgenv and getgenv()) or _G
 
 if env.AutoFarmVersion then
- if env.AutoFarmVersion>11 then return end
- if env.AutoFarmVersion==11 and env.AutoFarmJob==game.JobId then return end
+ if env.AutoFarmVersion>12 then return end
+ if env.AutoFarmVersion==12 and env.AutoFarmJob==game.JobId then return end
 end
 
 local queueFn=queue_on_teleport or (syn and syn.queue_on_teleport)
